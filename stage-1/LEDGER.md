@@ -3,7 +3,7 @@
 One line per normative statement of the stage-1 text (parts 1–3, spec lines 1–600).
 Status: `todo` | `done` | `n/a (reason)`.
 
-Serialization point (design decision, to be implemented): one process holding all state in memory;
+Serialization point (implemented in `app/server.go`, `Server.mu`): one process holding all state in memory;
 every state-changing operation (reset, import, payment, request create/pay/decline/cancel, split,
 settlement, signup, idempotency-key claim) runs inside one global critical section, so balance
 checks, debits/credits and key claims are a single atomic step. Reads that must be snapshots
@@ -12,42 +12,42 @@ checks, debits/credits and key claims are a single atomic step. Reads that must 
 | # | id | requirement | status |
 |---|---|---|---|
 | 1 | SC-01 | Build only from the supplied requirements; no source/API docs/schemas from existing products in the domain | todo |
-| 2 | SC-02 | Only the HTTP API is required (send by handle, request, split, activity feed, settlements) | todo |
-| 3 | SC-03 | Invariant: sum of wallet balances always equals the total seeded by the last `POST /_test/reset` (incl. concurrency, retries) | todo |
-| 4 | SC-04 | Invariant: no wallet balance negative, including transiently | todo |
+| 2 | SC-02 | Only the HTTP API is required (send by handle, request, split, activity feed, settlements) | done |
+| 3 | SC-03 | Invariant: sum of wallet balances always equals the total seeded by the last `POST /_test/reset` (incl. concurrency, retries) | done |
+| 4 | SC-04 | Invariant: no wallet balance negative, including transiently | done |
 | 5 | SC-05 | Invariant: a payment request moves money at most once | todo |
 | 6 | SC-06 | All amounts are exact integer counts of minor units | todo |
 | 7 | SC-07 | Money moves only between existing wallets; deposits/top-ups/withdrawals/cards/banks out of scope | todo |
-| 8 | DL-01 | Deliver an HTTP service, a `Dockerfile` and a `RUN.md` with a command that builds and starts it without manual setup | todo |
-| 9 | DL-02 | `docker-compose.yml` optional and not used to start the service | todo |
-| 10 | DL-03 | Image runs on its own with `-e PORT=<port>` and a port mapping | todo |
-| 11 | DL-04 | No outbound network at run time; all runtime deps, init and seed data inside the single container (vendored at build) | todo |
-| 12 | DL-05 | Runtime assets (fonts, scripts, stylesheets) included in the image | todo |
-| 13 | LIM-01 | CPU limit 2 vCPU | todo |
-| 14 | LIM-02 | Memory limit 2 GiB | todo |
-| 15 | LIM-03 | Start to first healthy response ≤ 60 s | todo |
-| 16 | LIM-04 | Up to 50 concurrent requests in flight | todo |
-| 17 | LIM-05 | Per-request timeout 5 s; 10 s for `POST /_test/reset` and test-control calls (export/import) | todo |
-| 18 | LIM-06 | Disk ephemeral; state need not survive a container restart | todo |
-| 19 | RT-01 | Listen on `0.0.0.0` on `PORT` env var, default `8080` | todo |
-| 20 | RT-02 | `GET /health` → 200 `{"status":"ok"}` once service and store can serve; non-200 allowed before ready | todo |
-| 21 | RT-03 | `POST /_test/reset` with fixture body → 204 No Content; replaces all state | todo |
-| 22 | RT-04 | After reset returns 204, subsequent requests see only that fixture; repeated resets supported | todo |
-| 23 | RT-05 | Reset enabled in delivered image, no authentication | todo |
-| 24 | CV-01 | Requests and responses are `application/json; charset=utf-8` | todo |
-| 25 | CV-02 | Response timestamps RFC 3339 with explicit offset (e.g. `+00:00`) | todo |
-| 26 | CV-03 | Unknown fields in a request body ignored, never an error | todo |
-| 27 | CV-04 | Unknown query parameters ignored | todo |
-| 28 | CV-05 | IDs opaque strings ≤ 64 characters | todo |
-| 29 | MD-01 | One currency, declared in the fixture; every API amount is an integer count of its minor units | todo |
-| 30 | MD-02 | Amounts with integral numeric value accepted: `1000`, `1000.0`, `1e3` are the same valid amount | todo |
-| 31 | MD-03 | Booleans and strings are not numbers for amounts | todo |
-| 32 | MD-04 | Handle unique across service, matches `^[a-z0-9_]{1,20}$`, never changes once set | todo |
+| 8 | DL-01 | Deliver an HTTP service, a `Dockerfile` and a `RUN.md` with a command that builds and starts it without manual setup | done |
+| 9 | DL-02 | `docker-compose.yml` optional and not used to start the service | done |
+| 10 | DL-03 | Image runs on its own with `-e PORT=<port>` and a port mapping | done |
+| 11 | DL-04 | No outbound network at run time; all runtime deps, init and seed data inside the single container (vendored at build) | done |
+| 12 | DL-05 | Runtime assets (fonts, scripts, stylesheets) included in the image | done |
+| 13 | LIM-01 | CPU limit 2 vCPU | done |
+| 14 | LIM-02 | Memory limit 2 GiB | done |
+| 15 | LIM-03 | Start to first healthy response ≤ 60 s | done |
+| 16 | LIM-04 | Up to 50 concurrent requests in flight | done |
+| 17 | LIM-05 | Per-request timeout 5 s; 10 s for `POST /_test/reset` and test-control calls (export/import) | done |
+| 18 | LIM-06 | Disk ephemeral; state need not survive a container restart | done |
+| 19 | RT-01 | Listen on `0.0.0.0` on `PORT` env var, default `8080` | done |
+| 20 | RT-02 | `GET /health` → 200 `{"status":"ok"}` once service and store can serve; non-200 allowed before ready | done |
+| 21 | RT-03 | `POST /_test/reset` with fixture body → 204 No Content; replaces all state | done |
+| 22 | RT-04 | After reset returns 204, subsequent requests see only that fixture; repeated resets supported | done |
+| 23 | RT-05 | Reset enabled in delivered image, no authentication | done |
+| 24 | CV-01 | Requests and responses are `application/json; charset=utf-8` | done |
+| 25 | CV-02 | Response timestamps RFC 3339 with explicit offset (e.g. `+00:00`) | done |
+| 26 | CV-03 | Unknown fields in a request body ignored, never an error | done |
+| 27 | CV-04 | Unknown query parameters ignored | done |
+| 28 | CV-05 | IDs opaque strings ≤ 64 characters | done |
+| 29 | MD-01 | One currency, declared in the fixture; every API amount is an integer count of its minor units | done |
+| 30 | MD-02 | Amounts with integral numeric value accepted: `1000`, `1000.0`, `1e3` are the same valid amount | done |
+| 31 | MD-03 | Booleans and strings are not numbers for amounts | done |
+| 32 | MD-04 | Handle unique across service, matches `^[a-z0-9_]{1,20}$`, never changes once set | done |
 | 33 | MD-05 | Recipients identified by handle; directory/user-search endpoints out of scope | n/a (out of scope by text) |
-| 34 | MD-06 | Seeded users take handle from fixture | todo |
+| 34 | MD-06 | Seeded users take handle from fixture | done |
 | 35 | MD-07 | Signup handle derived from email: local part, lowercase, chars outside `[a-z0-9_]` → `_`, truncate to 20 | todo |
 | 36 | MD-08 | Derived handle already taken → signup fails (see AU-07) | todo |
-| 37 | MD-09 | New users start with balance 0; can receive money and be asked for money immediately | todo |
+| 37 | MD-09 | New users start with balance 0; can receive money and be asked for money immediately | done |
 | 38 | MD-10 | A payment moves money from one wallet to another immediately and atomically; sent directly or by paying a request | todo |
 | 39 | MD-11 | Request lifecycle: `pending` then exactly one of `paid`, `declined`, `cancelled` | todo |
 | 40 | MD-12 | Only the payer may pay or decline; only the requester may cancel | todo |
@@ -63,43 +63,43 @@ checks, debits/credits and key claims are a single atomic step. Reads that must 
 | 50 | AR-01 | `amount` ≤ 1000000000 on any single request | todo |
 | 51 | AR-02 | No operation produces a balance outside ±2⁵³ | todo |
 | 52 | AR-03 | Monetary arithmetic exact, no rounding error (integers, no floats) | todo |
-| 53 | FX-01 | Fixture shape: `currency`, `minor_units`, `users[]` (id, email, password, display_name, handle, balance), `payments[]` (id, from_user_id, to_user_id, amount, note, visibility), `requests[]` (id, requester_id, payer_id, amount, note, status) | todo |
-| 54 | FX-02 | Seeded users can log in with the given password immediately | todo |
-| 55 | FX-03 | Seeded `balance` is post-payment; seeded payments are not replayed against balances | todo |
-| 56 | FX-04 | Fixture `balance` < 0 → 422 `validation_failed` from reset, change nothing | todo |
-| 57 | FX-05 | `minor_units` is 0, 2 or 3; fixtures use EUR (2), JPY (0), BHD (3) | todo |
-| 58 | FX-06 | Fixture may include `settlement_operator_ids` (array of user ids), default `[]` | todo |
+| 53 | FX-01 | Fixture shape: `currency`, `minor_units`, `users[]` (id, email, password, display_name, handle, balance), `payments[]` (id, from_user_id, to_user_id, amount, note, visibility), `requests[]` (id, requester_id, payer_id, amount, note, status) | done |
+| 54 | FX-02 | Seeded users can log in with the given password immediately | done |
+| 55 | FX-03 | Seeded `balance` is post-payment; seeded payments are not replayed against balances | done |
+| 56 | FX-04 | Fixture `balance` < 0 → 422 `validation_failed` from reset, change nothing | done |
+| 57 | FX-05 | `minor_units` is 0, 2 or 3; fixtures use EUR (2), JPY (0), BHD (3) | done |
+| 58 | FX-06 | Fixture may include `settlement_operator_ids` (array of user ids), default `[]` | done |
 | 59 | FX-07 | Administrative balance endpoint out of scope | n/a (out of scope by text) |
-| 60 | ER-01 | Every 4xx/5xx body is `{"error":{"code":"...","message":"..."}}`; message any wording | todo |
-| 61 | ER-02 | 400 `malformed_request`: unparseable body, or field of wrong JSON type | todo |
+| 60 | ER-01 | Every 4xx/5xx body is `{"error":{"code":"...","message":"..."}}`; message any wording | done |
+| 61 | ER-02 | 400 `malformed_request`: unparseable body, or field of wrong JSON type | done |
 | 62 | ER-03 | 400 `missing_idempotency_key`: required `Idempotency-Key` absent or empty | todo |
-| 63 | ER-04 | 401 `unauthenticated`: missing, malformed or unknown bearer token | todo |
+| 63 | ER-04 | 401 `unauthenticated`: missing, malformed or unknown bearer token | done |
 | 64 | ER-05 | 403 `forbidden`: authenticated but not permitted on this resource | todo |
 | 65 | ER-06 | 404 `not_found`: no such resource, or not visible to caller | todo |
 | 66 | ER-07 | 409 `idempotency_key_reuse`: key already used by this caller with a different body | todo |
-| 67 | ER-08 | 422 `validation_failed`: required field/query param missing, or stated rule violated with no more specific code | todo |
+| 67 | ER-08 | 422 `validation_failed`: required field/query param missing, or stated rule violated with no more specific code | done |
 | 68 | ER-09 | Correct JSON type but invalid format/out-of-range (invalid dates, negative counts, over max/length) → 422 `validation_failed` unless endpoint says otherwise | todo |
 | 69 | ER-10 | Invalid `amount` incl. strings and booleans → 422 `validation_failed` (not 400) | todo |
 | 70 | ER-11 | Non-string `note` incl. `null` → 422 `validation_failed` | todo |
 | 71 | ER-12 | `visibility` other than `public`/`private` (any type) → 422 `validation_failed` | todo |
-| 72 | ER-13 | Omission alone selects optional-field defaults; other wrong JSON types → 400 `malformed_request` | todo |
+| 72 | ER-13 | Omission alone selects optional-field defaults; other wrong JSON types → 400 `malformed_request` | done |
 | 73 | ER-14 | Integer query params must be plain decimal digits; `1e9`, `4.0`, `+4` → 422 `validation_failed` | todo |
-| 74 | ER-15 | 400 `malformed_request` reserved for unparseable body or wrong field type | todo |
+| 74 | ER-15 | 400 `malformed_request` reserved for unparseable body or wrong field type | done |
 | 75 | ER-16 | `Idempotency-Key` 1–255 chars else 422 `validation_failed` | todo |
 | 76 | ER-17 | `limit` integer 1–200 else 422 `validation_failed` | todo |
 | 77 | ER-18 | `offset` integer ≥ 0 else 422 `validation_failed` | todo |
-| 78 | ER-19 | No 5xx responses, including under concurrent load | todo |
-| 79 | AU-01 | `POST /auth/signup` {email, password, display_name} → 201 {user_id, display_name, token} | todo |
-| 80 | AU-02 | `POST /auth/login` {email, password} → 200 {user_id, display_name, token} | todo |
-| 81 | AU-03 | Signup: email already registered → 409 `email_taken` | todo |
-| 82 | AU-04 | Signup: password shorter than 8 characters → 422 `validation_failed` | todo |
-| 83 | AU-05 | Signup: `email` not of form `local@domain` → 422 `validation_failed` | todo |
-| 84 | AU-06 | Login: wrong password or unknown email → 401 `unauthenticated` | todo |
-| 85 | AU-07 | Signup: derived handle already taken → 409 `handle_taken`, no account created | todo |
-| 86 | AU-08 | Every other endpoint requires a bearer token except `/health`, `/_test/reset`, `/_test/export`, `/_test/import`, signup, login | todo |
-| 87 | AU-09 | Token sent as `Authorization: Bearer <token>` | todo |
-| 88 | AU-10 | Tokens do not expire; multiple valid tokens and concurrent sessions per account | todo |
-| 89 | AU-11 | Passwords stored with bcrypt/scrypt/Argon2 or equivalent; never plaintext | todo |
+| 78 | ER-19 | No 5xx responses, including under concurrent load | done |
+| 79 | AU-01 | `POST /auth/signup` {email, password, display_name} → 201 {user_id, display_name, token} | done |
+| 80 | AU-02 | `POST /auth/login` {email, password} → 200 {user_id, display_name, token} | done |
+| 81 | AU-03 | Signup: email already registered → 409 `email_taken` | done |
+| 82 | AU-04 | Signup: password shorter than 8 characters → 422 `validation_failed` | done |
+| 83 | AU-05 | Signup: `email` not of form `local@domain` → 422 `validation_failed` | done |
+| 84 | AU-06 | Login: wrong password or unknown email → 401 `unauthenticated` | done |
+| 85 | AU-07 | Signup: derived handle already taken → 409 `handle_taken`, no account created | done |
+| 86 | AU-08 | Every other endpoint requires a bearer token except `/health`, `/_test/reset`, `/_test/export`, `/_test/import`, signup, login | done |
+| 87 | AU-09 | Token sent as `Authorization: Bearer <token>` | done |
+| 88 | AU-10 | Tokens do not expire; multiple valid tokens and concurrent sessions per account | done |
+| 89 | AU-11 | Passwords stored with bcrypt/scrypt/Argon2 or equivalent; never plaintext | done |
 | 90 | AU-12 | Email verification, password reset, refresh tokens, role management out of scope | n/a (out of scope by text) |
 | 91 | ID-01 | Idempotency key required on `POST /payments`, `POST /requests`, `POST /requests/{id}/pay`, `POST /splits`, `POST /settlements`, each independently | todo |
 | 92 | ID-02 | Key scoped to the authenticated user; same key string across users has no interaction | todo |
@@ -113,7 +113,7 @@ checks, debits/credits and key claims are a single atomic step. Reads that must 
 | 100 | ID-10 | Concurrent identical requests with unused key: exactly one 201, others 200 same body; effect once | todo |
 | 101 | ID-11 | Successful replay returns original response even after the resource changed/cancelled; no further state change | todo |
 | 102 | ID-12 | Order: body parses as JSON object + caller authenticated → claimed key resolved before field validation or resource checks (invalid body with used key → 409 `idempotency_key_reuse`) | todo |
-| 103 | API-01 | `GET /me` → {user_id, display_name, handle, balance, currency, minor_units} | todo |
+| 103 | API-01 | `GET /me` → {user_id, display_name, handle, balance, currency, minor_units} | done |
 | 104 | PM-01 | `POST /payments` body {to_handle, amount, note?, visibility?}; `note` default `""`, `visibility` default `"public"` | todo |
 | 105 | PM-02 | 201 payment body: payment_id, from_user_id, from_handle, to_user_id, to_handle, amount, currency, note, visibility, request_id (null), created_at (+ settlement_id null per ST-09) | todo |
 | 106 | PM-03 | Caller balance below `amount` → 409 `insufficient_funds` | todo |
@@ -206,3 +206,10 @@ checks, debits/credits and key claims are a single atomic step. Reads that must 
 | 193 | ST-13 | Members follow ordinary activity-feed visibility | todo |
 | 194 | ST-14 | Replay → 200 with original complete response | todo |
 | 195 | ST-15 | Reset/import preserves operator permissions, original payments, requests, membership and retry responses | todo |
+| 196 | ID-13 | A body that parses but is not a JSON object (array, string, number, null) on any POST taking a body → 400 `malformed_request` (coordinator addition) | done |
+| 197 | ER-20 | Same rule as ID-13 for every POST endpoint, including signup, login, reset, import (coordinator addition) | done |
+| 198 | FX-08 | Reset fixture with wrong JSON types, missing required fields (currency, minor_units, users; user id/email/password/handle/balance; payment id/from/to/amount; request id/requester/payer/amount), duplicate user ids/handles/emails/payment ids/request ids, unknown user ids in payments/requests/settlement_operator_ids, bad handle, minor_units not 0/2/3 → 422 `validation_failed`, state unchanged; unparseable → 400 (coordinator addition) | done |
+| 199 | FX-09 | Seeded requests carry status (default `pending`) and optional payment_id; seeded payments carry optional request_id, settlement_id, visibility (default public), note (default ""); created_at server-assigned at reset when absent (coordinator addition) | done |
+| 200 | AU-13 | Unknown route → 404 `not_found`; known path, wrong method → 405 `method_not_allowed`, both in the error envelope; bearer checked before body/idempotency on authed endpoints (coordinator addition) | done |
+| 201 | ER-21 | Write-path precedence: 401 → missing/invalid Idempotency-Key (400/422) → body parses as object (400) → claimed key (409 / 200 replay) → field validation → resource checks (coordinator addition) | todo |
+| 202 | PF-01 | Password hashing never holds the state lock; reset of ~100 users and 50 concurrent logins finish well under 5 s on 2 vCPU (coordinator addition) | done |
