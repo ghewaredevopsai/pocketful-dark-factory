@@ -48,6 +48,13 @@ func (s *Server) routes() []route {
 		{"POST", []string{"auth", "signup"}, s.signup},
 		{"POST", []string{"auth", "login"}, s.login},
 		{"GET", []string{"me"}, s.authed(s.me)},
+		{"POST", []string{"payments"}, s.idempotent(s.postPayment)},
+		{"POST", []string{"requests"}, s.idempotent(s.postRequest)},
+		{"GET", []string{"requests"}, s.authed(s.listRequests)},
+		{"POST", []string{"requests", "*", "pay"}, s.idempotent(s.payRequest)},
+		{"POST", []string{"requests", "*", "decline"}, s.authed(s.declineRequest)},
+		{"POST", []string{"requests", "*", "cancel"}, s.authed(s.cancelRequest)},
+		{"GET", []string{"activity"}, s.authed(s.activity)},
 	}
 }
 

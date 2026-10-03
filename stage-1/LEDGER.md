@@ -15,7 +15,7 @@ checks, debits/credits and key claims are a single atomic step. Reads that must 
 | 2 | SC-02 | Only the HTTP API is required (send by handle, request, split, activity feed, settlements) | done |
 | 3 | SC-03 | Invariant: sum of wallet balances always equals the total seeded by the last `POST /_test/reset` (incl. concurrency, retries) | done |
 | 4 | SC-04 | Invariant: no wallet balance negative, including transiently | done |
-| 5 | SC-05 | Invariant: a payment request moves money at most once | todo |
+| 5 | SC-05 | Invariant: a payment request moves money at most once | done |
 | 6 | SC-06 | All amounts are exact integer counts of minor units | todo |
 | 7 | SC-07 | Money moves only between existing wallets; deposits/top-ups/withdrawals/cards/banks out of scope | todo |
 | 8 | DL-01 | Deliver an HTTP service, a `Dockerfile` and a `RUN.md` with a command that builds and starts it without manual setup | done |
@@ -48,21 +48,21 @@ checks, debits/credits and key claims are a single atomic step. Reads that must 
 | 35 | MD-07 | Signup handle derived from email: local part, lowercase, chars outside `[a-z0-9_]` → `_`, truncate to 20 | todo |
 | 36 | MD-08 | Derived handle already taken → signup fails (see AU-07) | todo |
 | 37 | MD-09 | New users start with balance 0; can receive money and be asked for money immediately | done |
-| 38 | MD-10 | A payment moves money from one wallet to another immediately and atomically; sent directly or by paying a request | todo |
-| 39 | MD-11 | Request lifecycle: `pending` then exactly one of `paid`, `declined`, `cancelled` | todo |
-| 40 | MD-12 | Only the payer may pay or decline; only the requester may cancel | todo |
-| 41 | MD-13 | A request may exceed payer's balance; legal at creation, stays `pending` | todo |
-| 42 | MD-14 | Paying while short → 409 `insufficient_funds`, changes nothing; same request payable later once money arrives | todo |
-| 43 | MD-15 | Visibility belongs to the payment, chosen by the payer when money moves; a request has no visibility | todo |
-| 44 | MD-16 | A request never appears in anyone else's feed | todo |
-| 45 | FD-01 | `GET /activity` returns payments only | todo |
-| 46 | FD-02 | Payment appears for caller iff `visibility` is `public` OR caller is sender OR receiver; no other rule | todo |
-| 47 | FD-03 | Requests never in activity feed; `GET /requests` returns only requests where caller is requester or payer | todo |
-| 48 | FD-04 | A split is not a feed item; its requests visible to their two parties; fulfilling payments follow FD-02 | todo |
-| 49 | FD-05 | Visibility is one value on the payment, identical for both parties and everyone else; private hidden from third parties only | todo |
-| 50 | AR-01 | `amount` ≤ 1000000000 on any single request | todo |
-| 51 | AR-02 | No operation produces a balance outside ±2⁵³ | todo |
-| 52 | AR-03 | Monetary arithmetic exact, no rounding error (integers, no floats) | todo |
+| 38 | MD-10 | A payment moves money from one wallet to another immediately and atomically; sent directly or by paying a request | done |
+| 39 | MD-11 | Request lifecycle: `pending` then exactly one of `paid`, `declined`, `cancelled` | done |
+| 40 | MD-12 | Only the payer may pay or decline; only the requester may cancel | done |
+| 41 | MD-13 | A request may exceed payer's balance; legal at creation, stays `pending` | done |
+| 42 | MD-14 | Paying while short → 409 `insufficient_funds`, changes nothing; same request payable later once money arrives | done |
+| 43 | MD-15 | Visibility belongs to the payment, chosen by the payer when money moves; a request has no visibility | done |
+| 44 | MD-16 | A request never appears in anyone else's feed | done |
+| 45 | FD-01 | `GET /activity` returns payments only | done |
+| 46 | FD-02 | Payment appears for caller iff `visibility` is `public` OR caller is sender OR receiver; no other rule | done |
+| 47 | FD-03 | Requests never in activity feed; `GET /requests` returns only requests where caller is requester or payer | done |
+| 48 | FD-04 | A split is not a feed item; its requests visible to their two parties; fulfilling payments follow FD-02 | done |
+| 49 | FD-05 | Visibility is one value on the payment, identical for both parties and everyone else; private hidden from third parties only | done |
+| 50 | AR-01 | `amount` ≤ 1000000000 on any single request | done |
+| 51 | AR-02 | No operation produces a balance outside ±2⁵³ | done |
+| 52 | AR-03 | Monetary arithmetic exact, no rounding error (integers, no floats) | done |
 | 53 | FX-01 | Fixture shape: `currency`, `minor_units`, `users[]` (id, email, password, display_name, handle, balance), `payments[]` (id, from_user_id, to_user_id, amount, note, visibility), `requests[]` (id, requester_id, payer_id, amount, note, status) | done |
 | 54 | FX-02 | Seeded users can log in with the given password immediately | done |
 | 55 | FX-03 | Seeded `balance` is post-payment; seeded payments are not replayed against balances | done |
@@ -72,22 +72,22 @@ checks, debits/credits and key claims are a single atomic step. Reads that must 
 | 59 | FX-07 | Administrative balance endpoint out of scope | n/a (out of scope by text) |
 | 60 | ER-01 | Every 4xx/5xx body is `{"error":{"code":"...","message":"..."}}`; message any wording | done |
 | 61 | ER-02 | 400 `malformed_request`: unparseable body, or field of wrong JSON type | done |
-| 62 | ER-03 | 400 `missing_idempotency_key`: required `Idempotency-Key` absent or empty | todo |
+| 62 | ER-03 | 400 `missing_idempotency_key`: required `Idempotency-Key` absent or empty | done |
 | 63 | ER-04 | 401 `unauthenticated`: missing, malformed or unknown bearer token | done |
-| 64 | ER-05 | 403 `forbidden`: authenticated but not permitted on this resource | todo |
-| 65 | ER-06 | 404 `not_found`: no such resource, or not visible to caller | todo |
-| 66 | ER-07 | 409 `idempotency_key_reuse`: key already used by this caller with a different body | todo |
+| 64 | ER-05 | 403 `forbidden`: authenticated but not permitted on this resource | done |
+| 65 | ER-06 | 404 `not_found`: no such resource, or not visible to caller | done |
+| 66 | ER-07 | 409 `idempotency_key_reuse`: key already used by this caller with a different body | done |
 | 67 | ER-08 | 422 `validation_failed`: required field/query param missing, or stated rule violated with no more specific code | done |
-| 68 | ER-09 | Correct JSON type but invalid format/out-of-range (invalid dates, negative counts, over max/length) → 422 `validation_failed` unless endpoint says otherwise | todo |
-| 69 | ER-10 | Invalid `amount` incl. strings and booleans → 422 `validation_failed` (not 400) | todo |
-| 70 | ER-11 | Non-string `note` incl. `null` → 422 `validation_failed` | todo |
-| 71 | ER-12 | `visibility` other than `public`/`private` (any type) → 422 `validation_failed` | todo |
+| 68 | ER-09 | Correct JSON type but invalid format/out-of-range (invalid dates, negative counts, over max/length) → 422 `validation_failed` unless endpoint says otherwise | done |
+| 69 | ER-10 | Invalid `amount` incl. strings and booleans → 422 `validation_failed` (not 400) | done |
+| 70 | ER-11 | Non-string `note` incl. `null` → 422 `validation_failed` | done |
+| 71 | ER-12 | `visibility` other than `public`/`private` (any type) → 422 `validation_failed` | done |
 | 72 | ER-13 | Omission alone selects optional-field defaults; other wrong JSON types → 400 `malformed_request` | done |
-| 73 | ER-14 | Integer query params must be plain decimal digits; `1e9`, `4.0`, `+4` → 422 `validation_failed` | todo |
+| 73 | ER-14 | Integer query params must be plain decimal digits; `1e9`, `4.0`, `+4` → 422 `validation_failed` | done |
 | 74 | ER-15 | 400 `malformed_request` reserved for unparseable body or wrong field type | done |
-| 75 | ER-16 | `Idempotency-Key` 1–255 chars else 422 `validation_failed` | todo |
-| 76 | ER-17 | `limit` integer 1–200 else 422 `validation_failed` | todo |
-| 77 | ER-18 | `offset` integer ≥ 0 else 422 `validation_failed` | todo |
+| 75 | ER-16 | `Idempotency-Key` 1–255 chars else 422 `validation_failed` | done |
+| 76 | ER-17 | `limit` integer 1–200 else 422 `validation_failed` | done |
+| 77 | ER-18 | `offset` integer ≥ 0 else 422 `validation_failed` | done |
 | 78 | ER-19 | No 5xx responses, including under concurrent load | done |
 | 79 | AU-01 | `POST /auth/signup` {email, password, display_name} → 201 {user_id, display_name, token} | done |
 | 80 | AU-02 | `POST /auth/login` {email, password} → 200 {user_id, display_name, token} | done |
@@ -101,57 +101,57 @@ checks, debits/credits and key claims are a single atomic step. Reads that must 
 | 88 | AU-10 | Tokens do not expire; multiple valid tokens and concurrent sessions per account | done |
 | 89 | AU-11 | Passwords stored with bcrypt/scrypt/Argon2 or equivalent; never plaintext | done |
 | 90 | AU-12 | Email verification, password reset, refresh tokens, role management out of scope | n/a (out of scope by text) |
-| 91 | ID-01 | Idempotency key required on `POST /payments`, `POST /requests`, `POST /requests/{id}/pay`, `POST /splits`, `POST /settlements`, each independently | todo |
-| 92 | ID-02 | Key scoped to the authenticated user; same key string across users has no interaction | todo |
-| 93 | ID-03 | Replay = same user, same method, same path, same body; same key+body on a different path is a new request and succeeds normally | todo |
-| 94 | ID-04 | Header absent or empty → 400 `missing_idempotency_key` | todo |
-| 95 | ID-05 | First use of key → normal response 201 | todo |
-| 96 | ID-06 | Replay (same key, same body) → 200, body identical to original as a JSON value | todo |
-| 97 | ID-07 | Same key, different body → 409 `idempotency_key_reuse` | todo |
-| 98 | ID-08 | Key reused after original failed with 4xx → treated as first use (failed attempts claim no key) | todo |
-| 99 | ID-09 | "Same body" = same JSON value after parsing; key order and whitespace irrelevant | todo |
-| 100 | ID-10 | Concurrent identical requests with unused key: exactly one 201, others 200 same body; effect once | todo |
-| 101 | ID-11 | Successful replay returns original response even after the resource changed/cancelled; no further state change | todo |
-| 102 | ID-12 | Order: body parses as JSON object + caller authenticated → claimed key resolved before field validation or resource checks (invalid body with used key → 409 `idempotency_key_reuse`) | todo |
+| 91 | ID-01 | Idempotency key required on `POST /payments`, `POST /requests`, `POST /requests/{id}/pay`, `POST /splits`, `POST /settlements`, each independently | todo (payments, requests, pay done; splits, settlements in item 3) |
+| 92 | ID-02 | Key scoped to the authenticated user; same key string across users has no interaction | done |
+| 93 | ID-03 | Replay = same user, same method, same path, same body; same key+body on a different path is a new request and succeeds normally | done |
+| 94 | ID-04 | Header absent or empty → 400 `missing_idempotency_key` | done |
+| 95 | ID-05 | First use of key → normal response 201 | done |
+| 96 | ID-06 | Replay (same key, same body) → 200, body identical to original as a JSON value | done |
+| 97 | ID-07 | Same key, different body → 409 `idempotency_key_reuse` | done |
+| 98 | ID-08 | Key reused after original failed with 4xx → treated as first use (failed attempts claim no key) | done |
+| 99 | ID-09 | "Same body" = same JSON value after parsing; key order and whitespace irrelevant | done |
+| 100 | ID-10 | Concurrent identical requests with unused key: exactly one 201, others 200 same body; effect once | done |
+| 101 | ID-11 | Successful replay returns original response even after the resource changed/cancelled; no further state change | done |
+| 102 | ID-12 | Order: body parses as JSON object + caller authenticated → claimed key resolved before field validation or resource checks (invalid body with used key → 409 `idempotency_key_reuse`) | done |
 | 103 | API-01 | `GET /me` → {user_id, display_name, handle, balance, currency, minor_units} | done |
-| 104 | PM-01 | `POST /payments` body {to_handle, amount, note?, visibility?}; `note` default `""`, `visibility` default `"public"` | todo |
-| 105 | PM-02 | 201 payment body: payment_id, from_user_id, from_handle, to_user_id, to_handle, amount, currency, note, visibility, request_id (null), created_at (+ settlement_id null per ST-09) | todo |
-| 106 | PM-03 | Caller balance below `amount` → 409 `insufficient_funds` | todo |
-| 107 | PM-04 | `amount` < 1, > 1000000000 or non-integer → 422 `validation_failed` | todo |
-| 108 | PM-05 | `to_handle` is caller's own → 422 `self_payment` | todo |
-| 109 | PM-06 | `note` > 200 characters → 422 `validation_failed` | todo |
-| 110 | PM-07 | `visibility` neither `public` nor `private` → 422 `validation_failed` | todo |
-| 111 | PM-08 | No user has that handle → 404 `not_found` | todo |
-| 112 | PM-09 | Debit and credit one atomic step; never visible in one wallet and not the other; failed payment leaves no trace | todo |
-| 113 | PM-10 | `note` stored and returned verbatim (no trim/escape/normalise); Unicode/emoji round-trip byte for byte | todo |
-| 114 | RQ-01 | `POST /requests` body {payer_handle, amount, note?}; caller is requester | todo |
-| 115 | RQ-02 | 201 request body: request_id, requester_id, requester_handle, payer_id, payer_handle, amount, currency, note, status `pending`, payment_id null, created_at | todo |
-| 116 | RQ-03 | `amount` < 1, > 1000000000 or non-integer → 422 `validation_failed` | todo |
-| 117 | RQ-04 | `payer_handle` is caller's own → 422 `self_request` | todo |
-| 118 | RQ-05 | `note` > 200 characters → 422 `validation_failed` | todo |
-| 119 | RQ-06 | No user has that handle → 404 `not_found` | todo |
-| 120 | RQ-07 | Payer's balance not checked at creation | todo |
-| 121 | PY-01 | `POST /requests/{id}/pay` idempotent; only payer may call | todo |
-| 122 | PY-02 | Body `visibility` only, optional, default `"public"`; `{}` and `{"visibility":"public"}` are different bodies for replay | todo |
-| 123 | PY-03 | 201 with the created payment as in `POST /payments`, `request_id` set; request becomes `paid` with `payment_id` | todo |
-| 124 | PY-04 | Request not `pending` → 409 `request_not_pending` | todo |
-| 125 | PY-05 | Payer balance below amount → 409 `insufficient_funds` | todo |
-| 126 | PY-06 | Caller not the payer → 403 `forbidden` | todo |
-| 127 | PY-07 | Unknown request → 404 `not_found` | todo |
-| 128 | PY-08 | Replay of successful pay → 200 original payment body even when already `paid`; no extra money; never 409 `request_not_pending` | todo |
-| 129 | DC-01 | `POST /requests/{id}/decline`: only payer, no idempotency key, 200 with request `status: "declined"` | todo |
-| 130 | DC-02 | Decline already-declined → 200 current state | todo |
-| 131 | DC-03 | Decline `paid` or `cancelled` → 409 `request_not_pending` | todo |
-| 132 | DC-04 | Decline by non-payer → 403 `forbidden` | todo |
-| 133 | CN-01 | `POST /requests/{id}/cancel`: only requester, no idempotency key, 200 with request `status: "cancelled"` | todo |
-| 134 | CN-02 | Cancel already-cancelled → 200 | todo |
-| 135 | CN-03 | Cancel `paid` or `declined` → 409 `request_not_pending` | todo |
-| 136 | CN-04 | Cancel by non-requester → 403 `forbidden` | todo |
-| 137 | LR-01 | `GET /requests` returns only requests where caller is requester or payer, newest first by `created_at` | todo |
-| 138 | LR-02 | `direction`: `incoming` (caller payer), `outgoing` (caller requester), absent = both; unknown → 422 | todo |
-| 139 | LR-03 | `status`: one of four statuses or absent = all; unknown → 422 | todo |
-| 140 | LR-04 | `limit` default 50 (1–200), `offset` default 0 (≥ 0); out of range → 422 `validation_failed` | todo |
-| 141 | LR-05 | Response `{"requests":[...], "has_more": bool}`; `has_more` true when items exist beyond last returned | todo |
+| 104 | PM-01 | `POST /payments` body {to_handle, amount, note?, visibility?}; `note` default `""`, `visibility` default `"public"` | done |
+| 105 | PM-02 | 201 payment body: payment_id, from_user_id, from_handle, to_user_id, to_handle, amount, currency, note, visibility, request_id (null), created_at (+ settlement_id null per ST-09) | done |
+| 106 | PM-03 | Caller balance below `amount` → 409 `insufficient_funds` | done |
+| 107 | PM-04 | `amount` < 1, > 1000000000 or non-integer → 422 `validation_failed` | done |
+| 108 | PM-05 | `to_handle` is caller's own → 422 `self_payment` | done |
+| 109 | PM-06 | `note` > 200 characters → 422 `validation_failed` | done |
+| 110 | PM-07 | `visibility` neither `public` nor `private` → 422 `validation_failed` | done |
+| 111 | PM-08 | No user has that handle → 404 `not_found` | done |
+| 112 | PM-09 | Debit and credit one atomic step; never visible in one wallet and not the other; failed payment leaves no trace | done |
+| 113 | PM-10 | `note` stored and returned verbatim (no trim/escape/normalise); Unicode/emoji round-trip byte for byte | done |
+| 114 | RQ-01 | `POST /requests` body {payer_handle, amount, note?}; caller is requester | done |
+| 115 | RQ-02 | 201 request body: request_id, requester_id, requester_handle, payer_id, payer_handle, amount, currency, note, status `pending`, payment_id null, created_at | done |
+| 116 | RQ-03 | `amount` < 1, > 1000000000 or non-integer → 422 `validation_failed` | done |
+| 117 | RQ-04 | `payer_handle` is caller's own → 422 `self_request` | done |
+| 118 | RQ-05 | `note` > 200 characters → 422 `validation_failed` | done |
+| 119 | RQ-06 | No user has that handle → 404 `not_found` | done |
+| 120 | RQ-07 | Payer's balance not checked at creation | done |
+| 121 | PY-01 | `POST /requests/{id}/pay` idempotent; only payer may call | done |
+| 122 | PY-02 | Body `visibility` only, optional, default `"public"`; `{}` and `{"visibility":"public"}` are different bodies for replay | done |
+| 123 | PY-03 | 201 with the created payment as in `POST /payments`, `request_id` set; request becomes `paid` with `payment_id` | done |
+| 124 | PY-04 | Request not `pending` → 409 `request_not_pending` | done |
+| 125 | PY-05 | Payer balance below amount → 409 `insufficient_funds` | done |
+| 126 | PY-06 | Caller not the payer → 403 `forbidden` | done |
+| 127 | PY-07 | Unknown request → 404 `not_found` | done |
+| 128 | PY-08 | Replay of successful pay → 200 original payment body even when already `paid`; no extra money; never 409 `request_not_pending` | done |
+| 129 | DC-01 | `POST /requests/{id}/decline`: only payer, no idempotency key, 200 with request `status: "declined"` | done |
+| 130 | DC-02 | Decline already-declined → 200 current state | done |
+| 131 | DC-03 | Decline `paid` or `cancelled` → 409 `request_not_pending` | done |
+| 132 | DC-04 | Decline by non-payer → 403 `forbidden` | done |
+| 133 | CN-01 | `POST /requests/{id}/cancel`: only requester, no idempotency key, 200 with request `status: "cancelled"` | done |
+| 134 | CN-02 | Cancel already-cancelled → 200 | done |
+| 135 | CN-03 | Cancel `paid` or `declined` → 409 `request_not_pending` | done |
+| 136 | CN-04 | Cancel by non-requester → 403 `forbidden` | done |
+| 137 | LR-01 | `GET /requests` returns only requests where caller is requester or payer, newest first by `created_at` | done |
+| 138 | LR-02 | `direction`: `incoming` (caller payer), `outgoing` (caller requester), absent = both; unknown → 422 | done |
+| 139 | LR-03 | `status`: one of four statuses or absent = all; unknown → 422 | done |
+| 140 | LR-04 | `limit` default 50 (1–200), `offset` default 0 (≥ 0); out of range → 422 `validation_failed` | done |
+| 141 | LR-05 | Response `{"requests":[...], "has_more": bool}`; `has_more` true when items exist beyond last returned | done |
 | 142 | SP-01 | `POST /splits` idempotent; body {amount, participant_handles, note?}; caller may be included or omitted | todo |
 | 143 | SP-02 | Shares by §9 rule in given handle order; one `pending` request per participant except caller, caller as requester | todo |
 | 144 | SP-03 | 201 body: split_id, amount, currency, note, shares [{handle, amount}], requests [...], created_at | todo |
@@ -162,9 +162,9 @@ checks, debits/credits and key claims are a single atomic step. Reads that must 
 | 149 | SP-08 | Any handle unknown → 404 `not_found` | todo |
 | 150 | SP-09 | Caller as only participant is valid: one share, zero requests, `"requests": []` | todo |
 | 151 | SP-10 | A split checks nobody's balance | todo |
-| 152 | AC-01 | `GET /activity` → payments visible per FD-02, newest first by `created_at`; `{"payments":[...], "has_more": bool}` | todo |
-| 153 | AC-02 | Same-second order unspecified; stable pagination under concurrent writes not required | todo |
-| 154 | AC-03 | `limit`/`offset` behave exactly as in `GET /requests` | todo |
+| 152 | AC-01 | `GET /activity` → payments visible per FD-02, newest first by `created_at`; `{"payments":[...], "has_more": bool}` | done |
+| 153 | AC-02 | Same-second order unspecified; stable pagination under concurrent writes not required | done |
+| 154 | AC-03 | `limit`/`offset` behave exactly as in `GET /requests` | done |
 | 155 | MR-01 | Shares whole minor units, sum exactly to `amount`, differ by at most 1 | todo |
 | 156 | MR-02 | Remainder units go to the first participants in `participant_handles` order | todo |
 | 157 | MR-03 | Table: 1000/3 → 334, 333, 333 | todo |
@@ -211,5 +211,5 @@ checks, debits/credits and key claims are a single atomic step. Reads that must 
 | 198 | FX-08 | Reset fixture with wrong JSON types, missing required fields (currency, minor_units, users; user id/email/password/handle/balance; payment id/from/to/amount; request id/requester/payer/amount), duplicate user ids/handles/emails/payment ids/request ids, unknown user ids in payments/requests/settlement_operator_ids, bad handle, minor_units not 0/2/3 → 422 `validation_failed`, state unchanged; unparseable → 400 (coordinator addition) | done |
 | 199 | FX-09 | Seeded requests carry status (default `pending`) and optional payment_id; seeded payments carry optional request_id, settlement_id, visibility (default public), note (default ""); created_at server-assigned at reset when absent (coordinator addition) | done |
 | 200 | AU-13 | Unknown route → 404 `not_found`; known path, wrong method → 405 `method_not_allowed`, both in the error envelope; bearer checked before body/idempotency on authed endpoints (coordinator addition) | done |
-| 201 | ER-21 | Write-path precedence: 401 → missing/invalid Idempotency-Key (400/422) → body parses as object (400) → claimed key (409 / 200 replay) → field validation → resource checks (coordinator addition) | todo |
+| 201 | ER-21 | Write-path precedence: 401 → missing/invalid Idempotency-Key (400/422) → body parses as object (400) → claimed key (409 / 200 replay) → field validation → resource checks (coordinator addition) | done |
 | 202 | PF-01 | Password hashing never holds the state lock; reset of ~100 users and 50 concurrent logins finish well under 5 s on 2 vCPU (coordinator addition) | done |

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -17,9 +18,11 @@ type State struct {
 	Payments   []*Payment        `json:"payments"`
 	Requests   []*Request        `json:"requests"`
 	Operators  []string          `json:"settlement_operator_ids"`
-	Tokens     map[string]string `json:"tokens"`   // bearer token -> user id
-	NextID     int64             `json:"next_id"`  // counter for generated ids
-	NextSeq    int64             `json:"next_seq"` // insertion order, tie-break for "newest first"
+	Tokens     map[string]string `json:"tokens"` // bearer token -> user id
+	// completed idempotent writes, keyed by idemKey(user, method, path, key)
+	Idem    map[string]*IdemRecord `json:"idempotency"`
+	NextID  int64                  `json:"next_id"`  // counter for generated ids
+	NextSeq int64                  `json:"next_seq"` // insertion order, tie-break for "newest first"
 
 	// indexes, rebuilt by index(); never serialized
 	userByID     map[string]*User
@@ -50,6 +53,7 @@ type Payment struct {
 	SettlementID *string `json:"settlement_id"`
 	CreatedAt    string  `json:"created_at"`
 	Seq          int64   `json:"seq"`
+	at           int64   // CreatedAt as unix nanoseconds, for ordering
 }
 
 type Request struct {
@@ -62,6 +66,26 @@ type Request struct {
 	PaymentID *string `json:"payment_id"`
 	CreatedAt string  `json:"created_at"`
 	Seq       int64   `json:"seq"`
+	at        int64   // CreatedAt as unix nanoseconds, for ordering
+}
+
+// IdemRecord is a completed idempotent write: the canonical request body and the
+// exact original response body. Failed (4xx) attempts are never recorded.
+type IdemRecord struct {
+	Body     string          `json:"body"`
+	Response json.RawMessage `json:"response"`
+}
+
+func idemKey(uid, method, path, key string) string {
+	return uid + "\x00" + method + "\x00" + path + "\x00" + key
+}
+
+func stampNanos(s string) int64 {
+	t, err := time.Parse(time.RFC3339Nano, s)
+	if err != nil {
+		return 0
+	}
+	return t.UnixNano()
 }
 
 var handleRE = regexp.MustCompile(`^[a-z0-9_]{1,20}$`)
@@ -89,12 +113,17 @@ func (s *State) index() {
 	}
 	for _, p := range s.Payments {
 		s.paymentByID[p.ID] = p
+		p.at = stampNanos(p.CreatedAt)
 	}
 	for _, r := range s.Requests {
 		s.requestByID[r.ID] = r
+		r.at = stampNanos(r.CreatedAt)
 	}
 	if s.Tokens == nil {
 		s.Tokens = map[string]string{}
+	}
+	if s.Idem == nil {
+		s.Idem = map[string]*IdemRecord{}
 	}
 }
 
@@ -296,6 +325,7 @@ func parseFixture(m map[string]any) (*State, []seedUser, *apiErr) {
 			return bad("payments[%d].created_at", i)
 		}
 		p.Seq = st.seq()
+		p.at = stampNanos(p.CreatedAt)
 		st.Payments = append(st.Payments, p)
 		st.paymentByID[p.ID] = p
 	}
@@ -337,6 +367,7 @@ func parseFixture(m map[string]any) (*State, []seedUser, *apiErr) {
 			return bad("requests[%d].created_at", i)
 		}
 		r.Seq = st.seq()
+		r.at = stampNanos(r.CreatedAt)
 		st.Requests = append(st.Requests, r)
 		st.requestByID[r.ID] = r
 	}

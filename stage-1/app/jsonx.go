@@ -6,6 +6,7 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -107,25 +108,30 @@ func reqString(m map[string]any, k string) (string, *apiErr) {
 	return s, nil
 }
 
-// integral returns the exact integer value of a JSON number (1000, 1000.0 and 1e3 alike).
-// Strings, booleans, null and non-integral numbers are not integral (MD-02, MD-03).
-func integral(v any) (int64, bool) {
+// ratOf returns the exact value of a JSON number, or false for anything else.
+// Exponents are bounded so big.Rat never builds a giant power of ten (1e400000).
+func ratOf(v any) (*big.Rat, bool) {
 	n, ok := v.(json.Number)
 	if !ok {
-		return 0, false
+		return nil, false
 	}
 	s := string(n)
 	if len(s) > 400 {
-		return 0, false
+		return nil, false
 	}
 	if i := strings.IndexAny(s, "eE"); i >= 0 {
-		// bound the exponent so big.Rat never builds a giant power of ten
 		exp, err := strconv.Atoi(strings.TrimPrefix(s[i+1:], "+"))
 		if err != nil || exp > 400 || exp < -400 {
-			return 0, false
+			return nil, false
 		}
 	}
-	r, ok := new(big.Rat).SetString(s)
+	return new(big.Rat).SetString(s)
+}
+
+// integral returns the exact integer value of a JSON number (1000, 1000.0 and 1e3 alike).
+// Strings, booleans, null and non-integral numbers are not integral (MD-02, MD-03).
+func integral(v any) (int64, bool) {
+	r, ok := ratOf(v)
 	if !ok || !r.IsInt() {
 		return 0, false
 	}
@@ -134,4 +140,59 @@ func integral(v any) (int64, bool) {
 		return 0, false
 	}
 	return i.Int64(), true
+}
+
+// marshal encodes v as compact JSON without HTML escaping (notes are returned verbatim).
+func marshal(v any) []byte {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	_ = enc.Encode(v)
+	return bytes.TrimRight(buf.Bytes(), "\n")
+}
+
+// canonical renders a parsed JSON value so that equal JSON values give equal strings:
+// object keys sorted, whitespace dropped, numbers compared by exact value (ID-09).
+func canonical(v any) string {
+	var b strings.Builder
+	var walk func(v any)
+	walk = func(v any) {
+		switch t := v.(type) {
+		case map[string]any:
+			keys := make([]string, 0, len(t))
+			for k := range t {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			b.WriteByte('{')
+			for i, k := range keys {
+				if i > 0 {
+					b.WriteByte(',')
+				}
+				b.Write(marshal(k))
+				b.WriteByte(':')
+				walk(t[k])
+			}
+			b.WriteByte('}')
+		case []any:
+			b.WriteByte('[')
+			for i, e := range t {
+				if i > 0 {
+					b.WriteByte(',')
+				}
+				walk(e)
+			}
+			b.WriteByte(']')
+		case json.Number:
+			if r, ok := ratOf(t); ok {
+				b.WriteString("n:" + r.RatString())
+			} else {
+				b.WriteString("n:" + string(t))
+			}
+		default:
+			b.Write(marshal(t))
+		}
+	}
+	walk(v)
+	return b.String()
 }
