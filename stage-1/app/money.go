@@ -142,8 +142,22 @@ func page[T any](items []T, limit, offset int) ([]T, bool) {
 // already-claimed key (replay 200 / 409 reuse) -> the handler's field and resource
 // checks. Everything from the key lookup to storing the response runs under s.mu, so
 // claim, effect and receipt are one atomic step; a 4xx from the handler claims nothing.
-func (s *Server) idempotent(do func(st *State, uid string, m map[string]any, params []string) (int, any, *apiErr)) handler {
+type writeFunc func(st *State, uid string, m map[string]any, params []string) (int, any, *apiErr)
+
+func (s *Server) idempotent(do writeFunc) handler { return s.idempotentGuarded(nil, do) }
+
+// idempotentGuarded runs guard (a permission check such as "is an operator") right after
+// authentication, before the key header and body are looked at.
+func (s *Server) idempotentGuarded(guard func(st *State, uid string) *apiErr, do writeFunc) handler {
 	return s.authed(func(r *http.Request, uid string, params []string) (int, any, *apiErr) {
+		if guard != nil {
+			s.mu.Lock()
+			e := guard(s.st, uid)
+			s.mu.Unlock()
+			if e != nil {
+				return 0, nil, e
+			}
+		}
 		key := r.Header.Get("Idempotency-Key")
 		if key == "" {
 			return 0, nil, errf(400, "missing_idempotency_key", "Idempotency-Key header is required")

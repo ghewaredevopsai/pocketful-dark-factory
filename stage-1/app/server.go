@@ -55,6 +55,10 @@ func (s *Server) routes() []route {
 		{"POST", []string{"requests", "*", "decline"}, s.authed(s.declineRequest)},
 		{"POST", []string{"requests", "*", "cancel"}, s.authed(s.cancelRequest)},
 		{"GET", []string{"activity"}, s.authed(s.activity)},
+		{"POST", []string{"splits"}, s.idempotent(s.postSplit)},
+		{"POST", []string{"settlements"}, s.idempotentGuarded(operatorOnly, s.postSettlement)},
+		{"GET", []string{"_test", "export"}, s.export},
+		{"POST", []string{"_test", "import"}, s.importState},
 	}
 }
 

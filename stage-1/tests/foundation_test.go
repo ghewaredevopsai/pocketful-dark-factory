@@ -329,7 +329,9 @@ func TestResetOfManyUsersAndConcurrentLoginsAreFast(t *testing.T) {
 	if r := do(t, srv, "POST", "/_test/reset", "", fixture(users...)); r.status != 204 {
 		t.Fatal(r.raw)
 	}
-	if d := time.Since(start); d > 3*time.Second {
+	// generous bounds (the spec's budgets are 10 s for reset, 5 s per request) so that
+	// slow instrumented runs such as -race do not flake
+	if d := time.Since(start); d > 9*time.Second {
 		t.Fatalf("reset of 200 users took %v", d)
 	}
 	start = time.Now()
@@ -350,7 +352,7 @@ func TestResetOfManyUsersAndConcurrentLoginsAreFast(t *testing.T) {
 	for f := range fails {
 		t.Fatal(f)
 	}
-	if d := time.Since(start); d > 3*time.Second {
+	if d := time.Since(start); d > 5*time.Second {
 		t.Fatalf("50 concurrent logins took %v", d)
 	}
 }

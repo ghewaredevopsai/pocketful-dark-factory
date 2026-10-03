@@ -29,6 +29,7 @@ type State struct {
 	userByHandle map[string]*User
 	userByEmail  map[string]*User // lowercased email
 	operator     map[string]bool
+	settlements  map[string]bool // settlement ids already used by payments
 	paymentByID  map[string]*Payment
 	requestByID  map[string]*Request
 }
@@ -101,6 +102,7 @@ func (s *State) index() {
 	s.userByHandle = map[string]*User{}
 	s.userByEmail = map[string]*User{}
 	s.operator = map[string]bool{}
+	s.settlements = map[string]bool{}
 	s.paymentByID = map[string]*Payment{}
 	s.requestByID = map[string]*Request{}
 	for _, u := range s.Users {
@@ -114,10 +116,19 @@ func (s *State) index() {
 	for _, p := range s.Payments {
 		s.paymentByID[p.ID] = p
 		p.at = stampNanos(p.CreatedAt)
+		if p.SettlementID != nil {
+			s.settlements[*p.SettlementID] = true
+		}
+		if p.Seq > s.NextSeq {
+			s.NextSeq = p.Seq
+		}
 	}
 	for _, r := range s.Requests {
 		s.requestByID[r.ID] = r
 		r.at = stampNanos(r.CreatedAt)
+		if r.Seq > s.NextSeq {
+			s.NextSeq = r.Seq
+		}
 	}
 	if s.Tokens == nil {
 		s.Tokens = map[string]string{}
@@ -132,7 +143,7 @@ func (s *State) newID(prefix string) string {
 	for {
 		s.NextID++
 		id := fmt.Sprintf("%s%d", prefix, s.NextID)
-		if s.userByID[id] == nil && s.paymentByID[id] == nil && s.requestByID[id] == nil {
+		if s.userByID[id] == nil && s.paymentByID[id] == nil && s.requestByID[id] == nil && !s.settlements[id] {
 			return id
 		}
 	}
@@ -320,6 +331,9 @@ func parseFixture(m map[string]any) (*State, []seedUser, *apiErr) {
 		}
 		if p.SettlementID, good = optID(o, "settlement_id"); !good {
 			return bad("payments[%d].settlement_id", i)
+		}
+		if p.SettlementID != nil {
+			st.settlements[*p.SettlementID] = true
 		}
 		if p.CreatedAt, good = stamp(o); !good {
 			return bad("payments[%d].created_at", i)
