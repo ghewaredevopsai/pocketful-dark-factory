@@ -171,5 +171,19 @@ func validateState(st *State) *apiErr {
 			return bad("balance does not match the payment log")
 		}
 	}
+	// stage 4: every refund reverses an existing non-refund payment, is never corrected,
+	// and a target's refunds never exceed its current amount
+	for _, p := range st.Payments {
+		if p.RefundOf == nil {
+			continue
+		}
+		t := st.paymentByID[*p.RefundOf]
+		if t == nil || t.RefundOf != nil || p.From != t.To || p.To != t.From || len(p.Revisions) != 1 {
+			return bad("invalid refund link")
+		}
+		if st.refunded[t.ID] > latestRev(t).Amount {
+			return bad("refunds exceed their payment")
+		}
+	}
 	return nil
 }

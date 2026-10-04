@@ -23,6 +23,7 @@ type paymentView struct {
 	RequestID    *string `json:"request_id"`
 	SettlementID *string `json:"settlement_id"`
 	AuthID       *string `json:"authorization_id"`
+	RefundOf     *string `json:"refund_of"`
 	CreatedAt    string  `json:"created_at"`
 }
 
@@ -49,7 +50,7 @@ func (s *State) handleOf(uid string) string {
 
 func (s *State) paymentView(p *Payment) paymentView {
 	return paymentView{p.ID, p.From, s.handleOf(p.From), p.To, s.handleOf(p.To), p.Amount,
-		s.Currency, p.Note, p.Visibility, p.RequestID, p.SettlementID, p.AuthID, p.CreatedAt}
+		s.Currency, p.Note, p.Visibility, p.RequestID, p.SettlementID, p.AuthID, p.RefundOf, p.CreatedAt}
 }
 
 func (s *State) requestView(r *Request) requestView {

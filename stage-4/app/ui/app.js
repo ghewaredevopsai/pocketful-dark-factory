@@ -381,7 +381,8 @@ function feedItem(p) {
       h('div', { class: 'meta' }, when(p.created_at), privacyBadge(p.visibility),
         p.request_id ? h('span', { class: 'badge badge-public' }, 'Request') : null,
         p.authorization_id ? h('span', { class: 'badge badge-public' }, 'From a hold') : null,
-        p.settlement_id ? h('span', { class: 'badge badge-public' }, 'Settlement') : null)),
+        p.settlement_id ? h('span', { class: 'badge badge-public' }, 'Settlement') : null,
+        p.refund_of ? h('span', { class: 'badge badge-public' }, 'Refund') : null)),
     h('div', { class: `item-amount ${out ? 'amt-out' : inc ? 'amt-in' : ''}` },
       h('span', { class: 'dirword' }, word),
       h('span', { class: 'money', 'data-testid': `activity-amount-${p.payment_id}` }, fmt(p.amount))));

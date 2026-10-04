@@ -44,12 +44,15 @@ func (s *Server) postCorrection(st *State, uid string, m map[string]any, params 
 	if !ok || effNs > st.nowFloor() {
 		return 0, nil, invalid("effective_at must be an RFC 3339 instant with an offset, not later than now")
 	}
-	if p.SettlementID != nil || p.AuthID != nil {
-		return 0, nil, errf(422, "linked_payment_immutable", "settlement members and captures cannot be corrected")
+	if p.SettlementID != nil || p.AuthID != nil || p.RefundOf != nil {
+		return 0, nil, errf(422, "linked_payment_immutable", "settlement members, captures and refunds cannot be corrected")
 	}
 	prev := latestRev(p)
 	if int(exp) != prev.N {
 		return 0, nil, errf(409, "stale_revision", "expected_revision is not the latest revision")
+	}
+	if amount < st.refunded[p.ID] {
+		return 0, nil, errf(422, "refund_exceeds_payment", "a correction cannot go below the amount already refunded")
 	}
 	// the difference moves between the same two wallets: an increase debits the sender,
 	// a decrease debits the receiver; the current debit must be affordable now

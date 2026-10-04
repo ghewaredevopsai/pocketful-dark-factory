@@ -457,6 +457,28 @@ def hold_flows(run, svc):
     p.context.close()
 
 
+def refund_feed(run, svc):
+    """Stage 4: a refund is an ordinary payment in the feed, in the opposite direction."""
+    svc.reset(fixture())
+    ada, bob = svc.token("ada"), svc.token("bob")
+    st, p = svc.call("POST", "/payments", {"to_handle": "bob", "amount": 1500, "note": "tickets"}, token=ada, key=uuid.uuid4().hex)
+    st, r = svc.call("POST", f"/payments/{p['payment_id']}/refunds", {"amount": 500}, token=bob, key=uuid.uuid4().hex)
+    check(st == 201 and r["refund_of"] == p["payment_id"], "refund created", r)
+    pg = run.page()
+    run.login(pg)
+    pg.wait_for_selector(sel(f"activity-item-{r['payment_id']}"))
+    parties = text(pg, f"activity-parties-{r['payment_id']}")
+    check("bob" in parties and "you" in parties and parties.index("bob") < parties.index("you"),
+          "refund shown from bob to the viewer", parties)
+    check(text(pg, f"activity-amount-{r['payment_id']}") == "5.00 EUR" and text(pg, f"activity-note-{r['payment_id']}") == "tickets",
+          "refund amount and copied note")
+    check(pg.get_attribute(sel("wallet-balance"), "data-amount") == "9000", "balance reflects the refund")
+    order = pg.eval_on_selector_all(f"{sel('activity-list')} > *", "els => els.map(e => e.getAttribute('data-testid'))")
+    check(order[0] == f"activity-item-{r['payment_id']}", "refund newest first")
+    run.shot(pg, "wallet-refund-1280")
+    pg.context.close()
+
+
 def states(run, svc):
     svc.reset(fixture())
     p = run.page()
@@ -588,7 +610,7 @@ def contrast(run, svc):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--image", default="pocketful-stage3")
+    ap.add_argument("--image", default="pocketful-stage4")
     args = ap.parse_args()
     svc = Service(args.image)
     try:
@@ -596,7 +618,7 @@ def main():
         check(status == 200, "service healthy on an internal (no outbound) network")
         with sync_playwright() as pw:
             run = Run(pw, svc)
-            for scenario in (auth_flows, wallet_flows, requests_flows, split_flows, hold_flows, states, layout, contrast):
+            for scenario in (auth_flows, wallet_flows, requests_flows, split_flows, hold_flows, refund_feed, states, layout, contrast):
                 try:
                     scenario(run, svc)
                 except Exception as e:  # report and continue with the next scenario

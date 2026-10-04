@@ -1,9 +1,9 @@
-# Pocketful stage 3 — run instructions
+# Pocketful stage 4 — run instructions
 
 Build and start (from this folder):
 
 ```sh
-docker build -t pocketful-stage3 . && docker run --rm -e PORT=8080 -p 8080:8080 pocketful-stage3
+docker build -t pocketful-stage4 . && docker run --rm -e PORT=8080 -p 8080:8080 pocketful-stage4
 ```
 
 Then open http://localhost:8080/ in a browser (sign up, or log in as a user from a reset fixture).
@@ -21,11 +21,23 @@ Stage 3 adds `GET /me?as_of=&known_at=`, `GET /statement` (with frozen `snapshot
 revisions (effective and recorded times) and hold lifecycle events; new payment and hold event
 times carry microseconds and come from a monotonic clock.
 
-`POST /payments/{id}/corrections` (the eighth idempotent write path) appends a revision. Check
+`POST /payments/{id}/refunds` (the ninth idempotent write path, stage 4) creates a refund: a new
+payment from the original receiver back to the sender with `refund_of`, the target's note and
+visibility, `request_id`/`authorization_id`/`settlement_id` null. Check order: 401 → key header →
+body object → claimed key → 404 → 403 (not the original receiver) → 422 `validation_failed`
+(amount) → 422 `invalid_refund_target` (a refund) → 422 `refund_exceeds_payment` (all refunds above
+the target's current corrected amount) → 409 `insufficient_funds` (the receiver's available funds).
+Refunds are immutable; they never reopen requests or authorizations or change settlements. Every
+payment body carries `refund_of` (null otherwise); stored older receipts and statement snapshots
+taken by older stages replay in their original form.
+
+`POST /payments/{id}/corrections` (the eighth idempotent write path) appends a revision (revision objects carry
+`correction_batch_id`, null for single corrections). Check
 order: 401 → Idempotency-Key header → body is a JSON object → already-claimed key (200 replay of
 the original revision / 409 `idempotency_key_reuse`) → 404 unknown payment → 403 not the original
 sender → 422 `validation_failed` (any invalid field) → 422 `linked_payment_immutable` (settlement
-members, captures) → 409 `stale_revision` → 409 `insufficient_funds` (the current debit against
+members, captures, refunds) → 409 `stale_revision` → 422 `refund_exceeds_payment` (below the
+refunded amount) → 409 `insufficient_funds` (the current debit against
 available) → 409 `historical_overdraft` (total or available negative at any past boundary of
 either party, all movements at one instant combined). A refusal changes nothing and claims no key.
 
@@ -69,7 +81,7 @@ Real-browser checks (Playwright Chromium from the kickoff venv; containers run o
 Docker network with no outbound access; screenshots go to `review-ui/screens/`):
 
 ```sh
-docker build -t pocketful-stage3 . && docker build -t pocketful-stage1 ../stage-1
+docker build -t pocketful-stage4 . && docker build -t pocketful-stage1 ../stage-1
 <kickoff>/.venv/bin/python review-ui/ui_check.py    # screens, flows, layout, contrast
 <kickoff>/.venv/bin/python review-ui/ui_check2.py   # out-of-order refresh, competing clients,
                                                      # lost/timed-out/5xx writes, stage-1 -> stage-2
@@ -86,5 +98,5 @@ are plain sentences; the API error code is kept only in the message's `data-code
 Shipped checks (from the kickoff folder):
 
 ```sh
-.venv/bin/python -m harness run --track pocketful --repo <result-repo> --stage 3 --out <new-dir>
+.venv/bin/python -m harness run --track pocketful --repo <result-repo> --stage 4 --out <new-dir>
 ```

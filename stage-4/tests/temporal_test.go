@@ -323,7 +323,7 @@ func TestRevisionsEndpoint(t *testing.T) {
 	r := wantStatus(t, do(t, srv, "GET", "/payments/p_s1/revisions", tk["bob"], ""), 200)
 	revs := r.body["revisions"].([]any)
 	want := map[string]any{"payment_id": "p_s1", "revision": 1.0, "amount": 500.0, "effective_at": "2026-09-20T10:00:00+00:00",
-		"recorded_at": "2026-09-20T10:00:00+00:00", "reason": ""}
+		"recorded_at": "2026-09-20T10:00:00+00:00", "reason": "", "correction_batch_id": nil} // stage 4 adds correction_batch_id
 	if len(revs) != 1 || !reflect.DeepEqual(revs[0], want) {
 		t.Fatal(r.raw)
 	}

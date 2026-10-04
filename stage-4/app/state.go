@@ -39,6 +39,7 @@ type State struct {
 	paymentByID  map[string]*Payment
 	requestByID  map[string]*Request
 	authByID     map[string]*Authorization
+	refunded     map[string]int64        // payment id -> sum of its refunds (stage 4)
 	open         map[*Authorization]bool // open authorizations, for the expiry sweep
 	held         map[string]int64        // user id -> sum of open holds' remaining amounts
 }
@@ -64,6 +65,7 @@ type Payment struct {
 	RequestID    *string `json:"request_id"`
 	SettlementID *string `json:"settlement_id"`
 	AuthID       *string `json:"authorization_id"`
+	RefundOf     *string `json:"refund_of,omitempty"` // stage 4: the refunded payment
 	CreatedAt    string  `json:"created_at"`
 	// stage 3: append-only revision log; revision 1 is the original payment
 	Revisions []*Revision `json:"revisions,omitempty"`
@@ -87,12 +89,13 @@ type Request struct {
 // Revision is one immutable version of a payment's amount. Revision 1 is the original
 // (effective_at = recorded_at = created_at); corrections append more.
 type Revision struct {
-	N           int    `json:"revision"`
-	Amount      int64  `json:"amount"`
-	EffectiveAt string `json:"effective_at"`
-	RecordedAt  string `json:"recorded_at"`
-	Reason      string `json:"reason"`
-	eff, rec    int64  // parsed instants, unix ns
+	N           int     `json:"revision"`
+	Amount      int64   `json:"amount"`
+	EffectiveAt string  `json:"effective_at"`
+	RecordedAt  string  `json:"recorded_at"`
+	Reason      string  `json:"reason"`
+	BatchID     *string `json:"correction_batch_id,omitempty"` // stage 4: set by correction batches
+	eff, rec    int64   // parsed instants, unix ns
 }
 
 // Snapshot freezes one statement read: the window, the effective knowledge instant and the
@@ -104,6 +107,9 @@ type Snapshot struct {
 	To      int64  `json:"to"`
 	K       int64  `json:"k"`
 	KnownAt string `json:"known_at,omitempty"` // echo of a supplied known_at
+	// stage 4: snapshots made by a stage-4 service page payments with refund_of; snapshots
+	// imported from stage-3 exports keep paging their original (stage-3) payment shape
+	V4 bool `json:"v4,omitempty"`
 }
 
 // IdemRecord is a completed idempotent write: the canonical request body and the
@@ -175,9 +181,13 @@ func (s *State) index() {
 	for _, id := range s.Operators {
 		s.operator[id] = true
 	}
+	s.refunded = map[string]int64{}
 	for _, p := range s.Payments {
 		s.paymentByID[p.ID] = p
 		p.at = stampNanos(p.CreatedAt)
+		if p.RefundOf != nil {
+			s.refunded[*p.RefundOf] += p.Amount
+		}
 		if len(p.Revisions) == 0 { // stage-1/2 data: revision 1 is the original payment
 			p.Revisions = []*Revision{{N: 1, Amount: p.Amount, EffectiveAt: p.CreatedAt, RecordedAt: p.CreatedAt}}
 		}

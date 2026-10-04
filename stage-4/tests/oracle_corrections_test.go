@@ -28,8 +28,34 @@ type lRev struct{ amount, eff, rec int64 }
 
 type lPay struct {
 	id, from, to string
-	linked       bool
+	linked       bool   // settlement member, capture or refund: not correctable
+	refundOf     string // stage 4: the refunded payment ("" otherwise)
 	revs         []lRev
+}
+
+// refunded is the naive sum of every refund of p.
+func (l *ledger) refunded(p *lPay) int64 {
+	var n int64
+	for _, q := range l.pays {
+		if q.refundOf == p.id {
+			n += q.revs[0].amount
+		}
+	}
+	return n
+}
+
+// decideRefund returns the expected (status, code) of a refund by p's receiver.
+func (l *ledger) decideRefund(p *lPay, amount, now int64) (int, string) {
+	if p.refundOf != "" {
+		return 422, "invalid_refund_target"
+	}
+	if l.refunded(p)+amount > p.revs[len(p.revs)-1].amount {
+		return 422, "refund_exceeds_payment"
+	}
+	if l.total(p.to, math.MaxInt64, math.MaxInt64)-l.held(p.to, now, math.MaxInt64) < amount {
+		return 409, "insufficient_funds"
+	}
+	return 201, ""
 }
 
 type ledger struct {
@@ -105,6 +131,9 @@ func (l *ledger) decide(p *lPay, expected int, amount, eff, now int64) (int, str
 	if expected != len(p.revs) {
 		return 409, "stale_revision"
 	}
+	if amount < l.refunded(p) {
+		return 422, "refund_exceeds_payment"
+	}
 	prev := p.revs[len(p.revs)-1].amount
 	diff := amount - prev
 	debited, d := p.from, diff
@@ -174,7 +203,8 @@ func TestOracleWithCorrections(t *testing.T) {
 		t.Run(fmt.Sprintf("seed-%d", seed), func(t *testing.T) { correctionsRun(t, seed, outcomes) })
 	}
 	t.Logf("correction outcomes across seeds: %v", outcomes)
-	for _, want := range []string{"201", "stale_revision", "insufficient_funds", "historical_overdraft", "linked_payment_immutable", "replay"} {
+	for _, want := range []string{"201", "stale_revision", "insufficient_funds", "historical_overdraft", "linked_payment_immutable", "replay",
+		"refund", "refund:refund_exceeds_payment", "refund:invalid_refund_target", "refund_exceeds_payment"} {
 		if outcomes[want] == 0 {
 			t.Errorf("the random runs never produced %s", want)
 		}
@@ -303,7 +333,38 @@ func correctionsRun(t *testing.T, seed int64, outcomes map[string]int) {
 	for step := 0; step < 90; step++ {
 		u := "u_" + names[rng.Intn(4)]
 		other := "u_" + names[rng.Intn(4)]
-		switch op := rng.Intn(10); {
+		switch op := rng.Intn(12); {
+		case op >= 10: // refunds by the receiver, of any kind of target
+			p := l.pays[rng.Intn(len(l.pays))]
+			cur := p.revs[len(p.revs)-1].amount
+			var a int64
+			switch rng.Intn(3) {
+			case 0:
+				a = 1 + int64(rng.Intn(int(cur)+1)) // within the current amount (maybe over with earlier refunds)
+			case 1:
+				a = cur - l.refunded(p) + 1 // exactly one over the remaining refundable amount
+				if a < 1 {
+					a = 1
+				}
+			default:
+				a = 1 + int64(rng.Intn(2000))
+			}
+			wantSt, wantCode := l.decideRefund(p, a, time.Now().UnixNano())
+			r := refund(t, srv, tok[p.to], p.id, newKey(), fmt.Sprintf(`{"amount":%d}`, a))
+			code := ""
+			if e, ok := r.body["error"].(map[string]any); ok {
+				code, _ = e["code"].(string)
+			}
+			if r.status != wantSt || code != wantCode {
+				t.Fatalf("step %d refund of %s (%d, refunded %d of %d): got %d %s, reference %d %s", step, p.id, a, l.refunded(p), cur, r.status, r.raw, wantSt, wantCode)
+			}
+			if r.status == 201 {
+				q := addPay(r.body, true)
+				q.refundOf = p.id
+				outcomes["refund"]++
+			} else {
+				outcomes["refund:"+wantCode]++
+			}
 		case op < 2:
 			if u == other {
 				continue

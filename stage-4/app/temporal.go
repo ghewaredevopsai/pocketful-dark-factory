@@ -256,7 +256,7 @@ func (s *Server) getStatement(r *http.Request, uid string, _ []string) (int, any
 		return 0, nil, unauthed()
 	}
 	_, taken := st.stamp() // the read's instant; every later write is stamped after it
-	snap := &Snapshot{User: uid, To: taken, K: taken}
+	snap := &Snapshot{User: uid, To: taken, K: taken, V4: true}
 	if hasFrom {
 		f := fromV
 		snap.From = &f
@@ -278,13 +278,30 @@ func (s *Server) getStatement(r *http.Request, uid string, _ []string) (int, any
 	return 200, st.renderStatement(token, snap, limit, offset), nil
 }
 
+// legacyPaymentView is the stage-3 payment shape (no refund_of), for imported snapshots.
+type legacyPaymentView struct {
+	PaymentID    string  `json:"payment_id"`
+	FromUserID   string  `json:"from_user_id"`
+	FromHandle   string  `json:"from_handle"`
+	ToUserID     string  `json:"to_user_id"`
+	ToHandle     string  `json:"to_handle"`
+	Amount       int64   `json:"amount"`
+	Currency     string  `json:"currency"`
+	Note         string  `json:"note"`
+	Visibility   string  `json:"visibility"`
+	RequestID    *string `json:"request_id"`
+	SettlementID *string `json:"settlement_id"`
+	AuthID       *string `json:"authorization_id"`
+	CreatedAt    string  `json:"created_at"`
+}
+
 type entryView struct {
-	Payment      paymentView `json:"payment"`
-	Delta        int64       `json:"delta"`
-	BalanceAfter int64       `json:"balance_after"`
-	Revision     int         `json:"revision"`
-	EffectiveAt  string      `json:"effective_at"`
-	RecordedAt   string      `json:"recorded_at"`
+	Payment      any    `json:"payment"`
+	Delta        int64  `json:"delta"`
+	BalanceAfter int64  `json:"balance_after"`
+	Revision     int    `json:"revision"`
+	EffectiveAt  string `json:"effective_at"`
+	RecordedAt   string `json:"recorded_at"`
 }
 
 func (st *State) renderStatement(token string, snap *Snapshot, limit, offset int) map[string]any {
@@ -295,7 +312,12 @@ func (st *State) renderStatement(token string, snap *Snapshot, limit, offset int
 	for _, en := range pg {
 		pv := st.paymentView(en.p)
 		pv.Amount = en.rv.Amount // the selected amount for this statement
-		out = append(out, entryView{pv, en.d, en.bal, en.rv.N, en.rv.EffectiveAt, en.rv.RecordedAt})
+		var payment any = pv
+		if !snap.V4 {
+			payment = legacyPaymentView{pv.PaymentID, pv.FromUserID, pv.FromHandle, pv.ToUserID, pv.ToHandle, pv.Amount,
+				pv.Currency, pv.Note, pv.Visibility, pv.RequestID, pv.SettlementID, pv.AuthID, pv.CreatedAt}
+		}
+		out = append(out, entryView{payment, en.d, en.bal, en.rv.N, en.rv.EffectiveAt, en.rv.RecordedAt})
 	}
 	body := map[string]any{"opening_balance": opening, "entries": out, "closing_balance": closing,
 		"has_more": more, "snapshot": token}
@@ -308,16 +330,17 @@ func (st *State) renderStatement(token string, snap *Snapshot, limit, offset int
 // ---- GET /payments/{id}/revisions -------------------------------------------------------------
 
 type revisionView struct {
-	PaymentID   string `json:"payment_id"`
-	Revision    int    `json:"revision"`
-	Amount      int64  `json:"amount"`
-	EffectiveAt string `json:"effective_at"`
-	RecordedAt  string `json:"recorded_at"`
-	Reason      string `json:"reason"`
+	PaymentID   string  `json:"payment_id"`
+	Revision    int     `json:"revision"`
+	Amount      int64   `json:"amount"`
+	EffectiveAt string  `json:"effective_at"`
+	RecordedAt  string  `json:"recorded_at"`
+	Reason      string  `json:"reason"`
+	BatchID     *string `json:"correction_batch_id"` // stage 4: null unless made by a batch
 }
 
 func revView(p *Payment, rv *Revision) revisionView {
-	return revisionView{p.ID, rv.N, rv.Amount, rv.EffectiveAt, rv.RecordedAt, rv.Reason}
+	return revisionView{p.ID, rv.N, rv.Amount, rv.EffectiveAt, rv.RecordedAt, rv.Reason, rv.BatchID}
 }
 
 func (s *Server) getRevisions(r *http.Request, uid string, params []string) (int, any, *apiErr) {

@@ -716,7 +716,7 @@ def base_shot(p, name):
 
 
 def main():
-    s2 = base.Service("pocketful-stage3")  # the service under test
+    s2 = base.Service("pocketful-stage4")  # the service under test
     s1 = base.Service("pocketful-stage1")
     px = Proxy(ui=s2.base, api=s2.base)
     try:

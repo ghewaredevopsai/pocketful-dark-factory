@@ -25,6 +25,7 @@ import (
 )
 
 type refPayment struct {
+	refundOf string // stage 4
 	id       string
 	from, to string
 	amount   int64
@@ -263,7 +264,44 @@ func oracleRun(t *testing.T, seed int64) {
 		u := "u_" + names[rng.Intn(4)]
 		other := "u_" + names[rng.Intn(4)]
 		handle := other[2:]
-		switch rng.Intn(8) {
+		switch rng.Intn(9) {
+		case 8: // a refund by the receiver of a random payment (any kind)
+			p := m.payments[rng.Intn(len(m.payments))]
+			var refunded int64
+			for _, q := range m.payments {
+				if q.refundOf == p.id {
+					refunded += q.amount
+				}
+			}
+			a := 1 + int64(rng.Intn(int(p.amount)+1))
+			now := time.Now().UnixNano()
+			wantSt, wantCode := 201, ""
+			switch {
+			case p.refundOf != "":
+				wantSt, wantCode = 422, "invalid_refund_target"
+			case refunded+a > p.amount:
+				wantSt, wantCode = 422, "refund_exceeds_payment"
+			case m.total(p.to, now, now+int64(time.Hour))-m.held(p.to, now, now+int64(time.Hour)) < a:
+				wantSt, wantCode = 409, "insufficient_funds"
+			}
+			nearExpiry := false // a ttl=1 hold of the receiver expiring right now: skip the funds comparison
+			for _, h := range m.holds {
+				if h.from == p.to && h.expires > now-int64(300*time.Millisecond) && h.expires < now+int64(300*time.Millisecond) {
+					nearExpiry = true
+				}
+			}
+			r := post(t, srv, "/payments/"+p.id+"/refunds", tok[p.to], newKey(), fmt.Sprintf(`{"amount":%d}`, a))
+			code := ""
+			if e, ok := r.body["error"].(map[string]any); ok {
+				code, _ = e["code"].(string)
+			}
+			if (r.status != wantSt || code != wantCode) && !(nearExpiry && wantSt != 422) {
+				t.Fatalf("refund of %s (%d, refunded %d of %d): got %d %s, reference %d %s", p.id, a, refunded, p.amount, r.status, r.raw, wantSt, wantCode)
+			}
+			if r.status == 201 {
+				addPay(r.body)
+				m.payments[len(m.payments)-1].refundOf = p.id
+			}
 		case 0, 1:
 			if u == other {
 				continue
