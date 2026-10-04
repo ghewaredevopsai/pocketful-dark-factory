@@ -207,6 +207,7 @@ func (st *State) transfer(from, to *User, amount int64, note, vis string, reques
 	p := &Payment{ID: st.newID("p_"), From: from.ID, To: to.ID, Amount: amount, Note: note,
 		Visibility: vis, RequestID: requestID, SettlementID: settlementID, CreatedAt: at,
 		Seq: st.seq(), at: stampNanos(at)}
+	p.Revisions = []*Revision{{N: 1, Amount: amount, EffectiveAt: at, RecordedAt: at, eff: p.at, rec: p.at}}
 	st.Payments = append(st.Payments, p)
 	st.paymentByID[p.ID] = p
 	return p
@@ -245,7 +246,8 @@ func (s *Server) postPayment(st *State, uid string, m map[string]any, _ []string
 	if to.Balance > maxBalance-amount {
 		return 0, nil, invalid("receiver balance would exceed 2^53")
 	}
-	p := st.transfer(me, to, amount, note, vis, nil, nil, now())
+	at, _ := st.stamp()
+	p := st.transfer(me, to, amount, note, vis, nil, nil, at)
 	return 201, st.paymentView(p), nil
 }
 
@@ -309,7 +311,8 @@ func (s *Server) payRequest(st *State, uid string, m map[string]any, params []st
 		return 0, nil, invalid("receiver balance would exceed 2^53")
 	}
 	id := rq.ID
-	p := st.transfer(payer, requester, rq.Amount, rq.Note, vis, &id, nil, now())
+	at, _ := st.stamp()
+	p := st.transfer(payer, requester, rq.Amount, rq.Note, vis, &id, nil, at)
 	rq.Status = "paid"
 	pid := p.ID
 	rq.PaymentID = &pid

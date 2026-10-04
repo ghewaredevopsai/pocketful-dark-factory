@@ -101,6 +101,16 @@ func validateState(st *State) *apiErr {
 			return bad("invalid or duplicate payment")
 		}
 		ids[p.ID] = true
+		// stage-3 revision log (absent in stage-1/2 exports: index() synthesizes revision 1)
+		var prevRec int64
+		for i, rv := range p.Revisions {
+			if rv == nil || rv.N != i+1 || rv.Amount < 0 || rv.Amount > maxAmount ||
+				stampNanos(rv.EffectiveAt) == 0 || stampNanos(rv.RecordedAt) <= prevRec ||
+				(i == 0 && rv.Amount != p.Amount) {
+				return bad("invalid payment revision")
+			}
+			prevRec = stampNanos(rv.RecordedAt)
+		}
 	}
 	ids = map[string]bool{}
 	for _, r := range st.Requests {
@@ -147,10 +157,18 @@ func validateState(st *State) *apiErr {
 		}
 		ids[a.ID] = true
 	}
+	for tok, sn := range st.Snapshots {
+		if sn == nil || tok == "" || !users[sn.User] {
+			return bad("invalid statement snapshot")
+		}
+	}
 	st.index()
 	for _, u := range st.Users {
 		if st.held[u.ID] > u.Balance {
 			return bad("open holds exceed a balance")
+		}
+		if *u.Opening+st.netOf(u.ID) != u.Balance { // the cached balance must match the log
+			return bad("balance does not match the payment log")
 		}
 	}
 	return nil

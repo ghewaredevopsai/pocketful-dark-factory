@@ -71,7 +71,8 @@ func wantStatus(t *testing.T, r resp, status int) resp {
 	return r
 }
 
-var stampRE = regexp.MustCompile(`^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+00:00$`)
+// whole seconds (requests, holds) or microseconds (stage-3 payment events), always +00:00
+var stampRE = regexp.MustCompile(`^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{6})?\+00:00$`)
 
 // ---- payments ----------------------------------------------------------------
 

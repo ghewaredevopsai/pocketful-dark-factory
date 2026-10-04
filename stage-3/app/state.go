@@ -26,6 +26,9 @@ type State struct {
 	// stage 2: holds. TTL 0 (a stage-1 export) means the default 600 s.
 	TTL            int64            `json:"authorization_ttl_seconds"`
 	Authorizations []*Authorization `json:"authorizations"`
+	// stage 3: the monotonic event clock (unix ns) and the frozen statement snapshots
+	LastStamp int64                `json:"last_stamp"`
+	Snapshots map[string]*Snapshot `json:"snapshots"`
 
 	// indexes, rebuilt by index(); never serialized
 	userByID     map[string]*User
@@ -46,7 +49,9 @@ type User struct {
 	DisplayName string `json:"display_name"`
 	Handle      string `json:"handle"`
 	PassHash    string `json:"password_hash"`
-	Balance     int64  `json:"balance"`
+	Balance     int64  `json:"balance"` // current total (cache of Opening + latest revisions)
+	// balance before any payment moved; nil in stage-1/2 exports, derived by index()
+	Opening *int64 `json:"opening,omitempty"`
 }
 
 type Payment struct {
@@ -60,8 +65,10 @@ type Payment struct {
 	SettlementID *string `json:"settlement_id"`
 	AuthID       *string `json:"authorization_id"`
 	CreatedAt    string  `json:"created_at"`
-	Seq          int64   `json:"seq"`
-	at           int64   // CreatedAt as unix nanoseconds, for ordering
+	// stage 3: append-only revision log; revision 1 is the original payment
+	Revisions []*Revision `json:"revisions,omitempty"`
+	Seq       int64       `json:"seq"`
+	at        int64       // CreatedAt as unix nanoseconds, for ordering
 }
 
 type Request struct {
@@ -75,6 +82,28 @@ type Request struct {
 	CreatedAt string  `json:"created_at"`
 	Seq       int64   `json:"seq"`
 	at        int64   // CreatedAt as unix nanoseconds, for ordering
+}
+
+// Revision is one immutable version of a payment's amount. Revision 1 is the original
+// (effective_at = recorded_at = created_at); corrections append more.
+type Revision struct {
+	N           int    `json:"revision"`
+	Amount      int64  `json:"amount"`
+	EffectiveAt string `json:"effective_at"`
+	RecordedAt  string `json:"recorded_at"`
+	Reason      string `json:"reason"`
+	eff, rec    int64  // parsed instants, unix ns
+}
+
+// Snapshot freezes one statement read: the window, the effective knowledge instant and the
+// echo values. Revisions are append-only and every later write is stamped after Taken, so
+// recomputing the statement with known_at = min(known_at, Taken) reproduces the read exactly.
+type Snapshot struct {
+	User    string `json:"user_id"`
+	From    *int64 `json:"from,omitempty"` // nil = opening of the wallet
+	To      int64  `json:"to"`
+	K       int64  `json:"k"`
+	KnownAt string `json:"known_at,omitempty"` // echo of a supplied known_at
 }
 
 // IdemRecord is a completed idempotent write: the canonical request body and the
@@ -104,6 +133,21 @@ const maxBalance = int64(1) << 53
 // now is the server clock, RFC 3339 with an explicit numeric offset (CV-02).
 const stampLayout = "2006-01-02T15:04:05-07:00"
 
+// microLayout is used for stage-3 event times (payments, revisions, hold events).
+const microLayout = "2006-01-02T15:04:05.000000-07:00"
+
+// stamp returns a new event instant from the monotonic state clock: never earlier than
+// the wall clock, always at least 1µs after the previous stamp. Everything recorded after
+// a statement snapshot is therefore strictly later than the snapshot.
+func (st *State) stamp() (string, int64) {
+	t := time.Now().UnixNano() / 1000 * 1000
+	if t <= st.LastStamp {
+		t = st.LastStamp + 1000
+	}
+	st.LastStamp = t
+	return time.Unix(0, t).UTC().Format(microLayout), t
+}
+
 func now() string { return time.Now().UTC().Format(stampLayout) }
 
 func (s *State) index() {
@@ -125,6 +169,15 @@ func (s *State) index() {
 	for _, p := range s.Payments {
 		s.paymentByID[p.ID] = p
 		p.at = stampNanos(p.CreatedAt)
+		if len(p.Revisions) == 0 { // stage-1/2 data: revision 1 is the original payment
+			p.Revisions = []*Revision{{N: 1, Amount: p.Amount, EffectiveAt: p.CreatedAt, RecordedAt: p.CreatedAt}}
+		}
+		for _, rv := range p.Revisions {
+			rv.eff, rv.rec = stampNanos(rv.EffectiveAt), stampNanos(rv.RecordedAt)
+			if rv.rec > s.LastStamp {
+				s.LastStamp = rv.rec
+			}
+		}
 		if p.SettlementID != nil {
 			s.settlements[*p.SettlementID] = true
 		}
@@ -164,10 +217,31 @@ func (s *State) index() {
 		if a.Status == "open" {
 			s.open[a] = true
 			s.held[a.From] += a.Amount - a.Captured
+			a.ClosedAt = nil
+		} else if a.ClosedAt == nil { // closed before stage 3: synthesize the close time
+			c := s.synthesizedClose(a)
+			a.ClosedAt = &c
+		}
+		a.closed = 0
+		if a.ClosedAt != nil {
+			a.closed = stampNanos(*a.ClosedAt)
+			if a.closed > s.LastStamp && a.Status != "expired" {
+				s.LastStamp = a.closed
+			}
 		}
 		if a.Seq > s.NextSeq {
 			s.NextSeq = a.Seq
 		}
+	}
+	// opening balances: given (stage 3), else balance minus the net of current revisions
+	for _, u := range s.Users {
+		if u.Opening == nil {
+			o := u.Balance - s.netOf(u.ID)
+			u.Opening = &o
+		}
+	}
+	if s.Snapshots == nil {
+		s.Snapshots = map[string]*Snapshot{}
 	}
 }
 
@@ -252,6 +326,9 @@ func parseFixture(m map[string]any) (*State, []seedUser, *apiErr) {
 		}
 		return &s, true
 	}
+	// reset time: the default instant of seeded payments; every later API event is
+	// stamped after it, and seeded instants may not lie after it (no future history)
+	resetStr, resetNs := st.stamp()
 	stamp := func(o map[string]any) (string, bool) {
 		v, present := o["created_at"]
 		if !present || v == nil {
@@ -372,8 +449,10 @@ func parseFixture(m map[string]any) (*State, []seedUser, *apiErr) {
 		if p.AuthID, good = optID(o, "authorization_id"); !good {
 			return bad("payments[%d].authorization_id", i)
 		}
-		if p.CreatedAt, good = stamp(o); !good {
-			return bad("payments[%d].created_at", i)
+		if v, present := o["created_at"]; !present || v == nil {
+			p.CreatedAt = resetStr
+		} else if p.CreatedAt, good = stamp(o); !good || stampNanos(p.CreatedAt) > resetNs {
+			return bad("payments[%d].created_at must be an RFC 3339 instant not in the future", i)
 		}
 		p.Seq = st.seq()
 		p.at = stampNanos(p.CreatedAt)
@@ -493,7 +572,14 @@ func parseFixture(m map[string]any) (*State, []seedUser, *apiErr) {
 				a.PaymentIDs = append(a.PaymentIDs, id)
 			}
 		}
-		if a.CreatedAt, good = stamp(o); !good {
+		if v, present := o["closed_at"]; present && v != nil && a.Status != "open" {
+			c, good := v.(string)
+			if !good || stampNanos(c) == 0 {
+				return bad("authorizations[%d].closed_at", i)
+			}
+			a.ClosedAt = &c
+		}
+		if a.CreatedAt, good = stamp(o); !good || stampNanos(a.CreatedAt) > resetNs {
 			return bad("authorizations[%d].created_at", i)
 		}
 		a.Seq = st.seq()
@@ -540,5 +626,6 @@ func parseFixture(m map[string]any) (*State, []seedUser, *apiErr) {
 	if st.Operators == nil {
 		st.Operators = []string{}
 	}
+	st.index() // derive openings, revision 1 of seeded payments and hold close times
 	return st, seeds, nil
 }

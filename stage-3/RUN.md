@@ -1,9 +1,9 @@
-# Pocketful stage 2 — run instructions
+# Pocketful stage 3 — run instructions
 
 Build and start (from this folder):
 
 ```sh
-docker build -t pocketful-stage2 . && docker run --rm -e PORT=8080 -p 8080:8080 pocketful-stage2
+docker build -t pocketful-stage3 . && docker run --rm -e PORT=8080 -p 8080:8080 pocketful-stage3
 ```
 
 Then open http://localhost:8080/ in a browser (sign up, or log in as a user from a reset fixture).
@@ -13,7 +13,13 @@ The service listens on `0.0.0.0:$PORT` (default `8080`). `GET /health` returns
 service at run time, writes no files (it runs with `--read-only --network none`), and runs as an
 unprivileged user from a `scratch` image. All state is in memory: `POST /_test/reset` replaces
 it with a fixture, `GET /_test/export` snapshots it and `POST /_test/import` restores a snapshot
-(including exports made by the stage-1 service).
+(including exports made by the stage-1 and stage-2 services: revision 1 of every payment and the
+hold history are synthesized on import).
+
+Stage 3 adds `GET /me?as_of=&known_at=`, `GET /statement` (with frozen `snapshot` paging) and
+`GET /payments/{id}/revisions`. Every money view is computed from an append-only log of payment
+revisions (effective and recorded times) and hold lifecycle events; new payment and hold event
+times carry microseconds and come from a monotonic clock.
 
 The browser UI is one HTML shell, one stylesheet and one script embedded in the binary
 (`app/ui/`), rendered client-side from the JSON API. It uses the system font stack and makes no
@@ -31,7 +37,7 @@ Real-browser checks (Playwright Chromium from the kickoff venv; containers run o
 Docker network with no outbound access; screenshots go to `review-ui/screens/`):
 
 ```sh
-docker build -t pocketful-stage2 . && docker build -t pocketful-stage1 ../stage-1
+docker build -t pocketful-stage3 . && docker build -t pocketful-stage1 ../stage-1
 <kickoff>/.venv/bin/python review-ui/ui_check.py    # screens, flows, layout, contrast
 <kickoff>/.venv/bin/python review-ui/ui_check2.py   # out-of-order refresh, competing clients,
                                                      # lost/timed-out/5xx writes, stage-1 -> stage-2
@@ -48,5 +54,5 @@ are plain sentences; the API error code is kept only in the message's `data-code
 Shipped checks (from the kickoff folder):
 
 ```sh
-.venv/bin/python -m harness run --track pocketful --repo <result-repo> --stage 2 --out <new-dir>
+.venv/bin/python -m harness run --track pocketful --repo <result-repo> --stage 3 --out <new-dir>
 ```

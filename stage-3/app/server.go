@@ -55,6 +55,8 @@ func (s *Server) routes() []route {
 		{"POST", []string{"requests", "*", "decline"}, s.authed(s.declineRequest)},
 		{"POST", []string{"requests", "*", "cancel"}, s.authed(s.cancelRequest)},
 		{"GET", []string{"activity"}, s.authed(s.activity)},
+		{"GET", []string{"statement"}, s.authed(s.getStatement)},
+		{"GET", []string{"payments", "*", "revisions"}, s.authed(s.getRevisions)},
 		{"POST", []string{"splits"}, s.idempotent(s.postSplit)},
 		{"POST", []string{"settlements"}, s.idempotentGuarded(operatorOnly, s.postSettlement)},
 		{"GET", []string{"_test", "export"}, s.export},
@@ -269,7 +271,8 @@ func (s *Server) signup(r *http.Request, _ []string) (int, any, *apiErr) {
 	if st.userByHandle[handle] != nil {
 		return 0, nil, errf(409, "handle_taken", "the handle derived from this email is taken")
 	}
-	u := &User{ID: st.newID("u_"), Email: email, DisplayName: name, Handle: handle, PassHash: hash}
+	zero := int64(0) // a new account opens at zero
+	u := &User{ID: st.newID("u_"), Email: email, DisplayName: name, Handle: handle, PassHash: hash, Opening: &zero}
 	st.Users = append(st.Users, u)
 	st.userByID[u.ID] = u
 	st.userByHandle[u.Handle] = u
@@ -321,16 +324,4 @@ func (s *Server) login(r *http.Request, _ []string) (int, any, *apiErr) {
 	tok := newToken()
 	s.st.Tokens[tok] = u.ID
 	return 200, map[string]any{"user_id": u.ID, "display_name": u.DisplayName, "token": tok}, nil
-}
-
-func (s *Server) me(r *http.Request, uid string, _ []string) (int, any, *apiErr) {
-	s.lock()
-	defer s.mu.Unlock()
-	u := s.st.userByID[uid]
-	if u == nil { // a reset landed between token check and here
-		return 0, nil, unauthed()
-	}
-	return 200, map[string]any{"user_id": u.ID, "display_name": u.DisplayName, "handle": u.Handle,
-		"balance": u.Balance, "total": u.Balance, "available": s.st.available(u), "held": s.st.held[u.ID],
-		"currency": s.st.Currency, "minor_units": s.st.MinorUnits}, nil
 }

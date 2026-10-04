@@ -588,7 +588,7 @@ def contrast(run, svc):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--image", default="pocketful-stage2")
+    ap.add_argument("--image", default="pocketful-stage3")
     args = ap.parse_args()
     svc = Service(args.image)
     try:

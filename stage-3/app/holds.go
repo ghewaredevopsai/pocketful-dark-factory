@@ -32,7 +32,10 @@ type Authorization struct {
 	PaymentIDs []string `json:"payment_ids"`
 	CreatedAt  string   `json:"created_at"`
 	Seq        int64    `json:"seq"`
-	at, exp    int64    // CreatedAt, ExpiresAt as unix nanoseconds
+	// stage 3: when the hold closed (final capture, void: event time; expiry: expires_at)
+	ClosedAt *string `json:"closed_at"`
+	at, exp  int64   // CreatedAt, ExpiresAt as unix nanoseconds
+	closed   int64   // ClosedAt as unix nanoseconds (0 while open)
 }
 
 func (a *Authorization) remaining() int64 {
@@ -51,16 +54,33 @@ func (s *Server) lock() {
 func (st *State) sweep(now int64) {
 	for a := range st.open {
 		if a.exp <= now {
-			st.close(a, "expired")
+			st.close(a, "expired", a.ExpiresAt) // expiry takes effect at expires_at
 		}
 	}
 }
 
 // close ends an open authorization, releasing whatever is still held.
-func (st *State) close(a *Authorization, status string) {
+func (st *State) close(a *Authorization, status, at string) {
 	st.held[a.From] -= a.Amount - a.Captured
 	a.Status = status
+	a.ClosedAt = &at
+	a.closed = stampNanos(at)
 	delete(st.open, a)
+}
+
+// synthesizedClose gives a close time to a hold closed before stage 3 (or seeded closed):
+// expiry at expires_at; capture at its last capture; void at the last known event.
+func (st *State) synthesizedClose(a *Authorization) string {
+	if a.Status == "expired" {
+		return a.ExpiresAt
+	}
+	last := a.CreatedAt
+	for _, id := range a.PaymentIDs {
+		if p := st.paymentByID[id]; p != nil && p.at > stampNanos(last) {
+			last = p.CreatedAt
+		}
+	}
+	return last
 }
 
 func (st *State) available(u *User) int64 { return u.Balance - st.held[u.ID] }
@@ -82,6 +102,7 @@ type authorizationView struct {
 	PaymentID       *string  `json:"payment_id"`
 	PaymentIDs      []string `json:"payment_ids"`
 	CreatedAt       string   `json:"created_at"`
+	ClosedAt        *string  `json:"closed_at"`
 }
 
 func (st *State) authorizationView(a *Authorization) authorizationView {
@@ -92,7 +113,7 @@ func (st *State) authorizationView(a *Authorization) authorizationView {
 	}
 	ids := append([]string{}, a.PaymentIDs...)
 	return authorizationView{a.ID, a.From, st.handleOf(a.From), a.To, st.handleOf(a.To), a.Amount,
-		a.Captured, a.remaining(), st.Currency, a.Note, a.Visibility, a.Status, a.ExpiresAt, last, ids, a.CreatedAt}
+		a.Captured, a.remaining(), st.Currency, a.Note, a.Visibility, a.Status, a.ExpiresAt, last, ids, a.CreatedAt, a.ClosedAt}
 }
 
 // ---- POST /authorizations -----------------------------------------------------------
@@ -193,13 +214,14 @@ func (s *Server) captureAuthorization(st *State, uid string, m map[string]any, p
 	// one atomic step: money moves out of the payer's total, the hold shrinks by the same
 	// amount, and a final capture releases the rest
 	id := a.ID
-	p := st.transfer(payer, receiver, amount, a.Note, a.Visibility, nil, nil, now())
+	at, _ := st.stamp()
+	p := st.transfer(payer, receiver, amount, a.Note, a.Visibility, nil, nil, at)
 	p.AuthID = &id
 	st.held[a.From] -= amount
 	a.Captured += amount
 	a.PaymentIDs = append(a.PaymentIDs, p.ID)
 	if final || a.Captured == a.Amount {
-		st.close(a, "captured")
+		st.close(a, "captured", p.CreatedAt)
 	}
 	return 201, st.paymentView(p), nil
 }
@@ -219,7 +241,8 @@ func (s *Server) voidAuthorization(r *http.Request, uid string, params []string)
 	}
 	switch a.Status {
 	case "open":
-		st.close(a, "voided")
+		at, _ := st.stamp()
+		st.close(a, "voided", at)
 	case "voided":
 	default:
 		return 0, nil, errf(409, "authorization_not_open", "authorization is "+a.Status)

@@ -159,12 +159,13 @@ func (s *Server) postSettlement(st *State, uid string, m map[string]any, _ []str
 	}
 	sid := st.newID("st_")
 	st.settlements[sid] = true
-	at := now()
+	at, _ := st.stamp() // committed_at: every member's created_at, effective_at and recorded_at
 	views := make([]paymentView, len(ins))
 	for i, t := range ins {
 		id := sid
 		p := &Payment{ID: st.newID("p_"), From: t.from.ID, To: t.to.ID, Amount: t.amount, Note: t.note,
 			Visibility: t.vis, SettlementID: &id, CreatedAt: at, Seq: st.seq(), at: stampNanos(at)}
+		p.Revisions = []*Revision{{N: 1, Amount: t.amount, EffectiveAt: at, RecordedAt: at, eff: p.at, rec: p.at}}
 		st.Payments = append(st.Payments, p)
 		st.paymentByID[p.ID] = p
 		views[i] = st.paymentView(p)

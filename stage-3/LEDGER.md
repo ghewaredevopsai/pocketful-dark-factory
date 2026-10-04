@@ -112,7 +112,7 @@ revisions (each with `effective_at` and `recorded_at`) and authorization lifecyc
 | 100 | ID-10 | Concurrent identical requests with unused key: exactly one 201, others 200 same body; effect once | done |
 | 101 | ID-11 | Successful replay returns original response even after the resource changed/cancelled; no further state change | done |
 | 102 | ID-12 | Order: body parses as JSON object + caller authenticated → claimed key resolved before field validation or resource checks (invalid body with used key → 409 `idempotency_key_reuse`) | done |
-| 103 | API-01 | `GET /me` → {user_id, display_name, handle, balance, currency, minor_units} | todo (S3: /me accepts as_of/known_at and echoes them; current values are corrected values) |
+| 103 | API-01 | `GET /me` → {user_id, display_name, handle, balance, currency, minor_units} | done |
 | 104 | PM-01 | `POST /payments` body {to_handle, amount, note?, visibility?}; `note` default `""`, `visibility` default `"public"` | done |
 | 105 | PM-02 | 201 payment body: payment_id, from_user_id, from_handle, to_user_id, to_handle, amount, currency, note, visibility, request_id (null), created_at (+ settlement_id null per ST-09) | done |
 | 106 | PM-03 | Caller balance below `amount` → 409 `insufficient_funds` | done |
@@ -183,7 +183,7 @@ revisions (each with `effective_at` and `recorded_at`) and authorization lifecyc
 | 171 | EX-07 | Import invalid JSON → §5 (400 `malformed_request`) | done |
 | 172 | EX-08 | Import missing fields, wrong track/version or invalid state → 422 `validation_failed`, destination unchanged | done |
 | 173 | EX-09 | Import/export 10 s timeout | done |
-| 174 | EX-10 | Preserve accounts, hashed-password login, existing bearer tokens, currency, balances, payments, requests, permissions (operators) | todo (S3: export/import also carry revisions, hold lifecycle events and snapshots) |
+| 174 | EX-10 | Preserve accounts, hashed-password login, existing bearer tokens, currency, balances, payments, requests, permissions (operators) | done |
 | 175 | EX-11 | Preserve all completed idempotent request bodies and original responses; replays still return 200 original after import | done |
 | 176 | EX-12 | Identities, timestamps, monetary records not regenerated or replayed against net balances | done |
 | 177 | EX-13 | Failed request keys remain reusable after import | done |
@@ -208,7 +208,7 @@ revisions (each with `effective_at` and `recorded_at`) and authorization lifecyc
 | 196 | ID-13 | A body that parses but is not a JSON object (array, string, number, null) on any POST taking a body → 400 `malformed_request` (coordinator addition) | done |
 | 197 | ER-20 | Same rule as ID-13 for every POST endpoint, including signup, login, reset, import (coordinator addition) | done |
 | 198 | FX-08 | Reset fixture with wrong JSON types, missing required fields (currency, minor_units, users; user id/email/password/handle/balance; payment id/from/to/amount; request id/requester/payer/amount), duplicate user ids/handles/emails/payment ids/request ids, unknown user ids in payments/requests/settlement_operator_ids, bad handle, minor_units not 0/2/3 → 422 `validation_failed`, state unchanged; unparseable → 400 (coordinator addition) | done |
-| 199 | FX-09 | Seeded requests carry status (default `pending`) and optional payment_id; seeded payments carry optional request_id, settlement_id, visibility (default public), note (default ""); created_at server-assigned at reset when absent (coordinator addition) | todo (S3: seeded payment created_at is revision 1; a future created_at is 422) |
+| 199 | FX-09 | Seeded requests carry status (default `pending`) and optional payment_id; seeded payments carry optional request_id, settlement_id, visibility (default public), note (default ""); created_at server-assigned at reset when absent (coordinator addition) | done |
 | 200 | AU-13 | Unknown route → 404 `not_found`; known path, wrong method → 405 `method_not_allowed`, both in the error envelope; bearer checked before body/idempotency on authed endpoints (coordinator addition) | done |
 | 201 | ER-21 | Write-path precedence: 401 → missing/invalid Idempotency-Key (400/422) → body parses as object (400) → claimed key (409 / 200 replay) → field validation → resource checks (coordinator addition) | done |
 | 202 | PF-01 | Password hashing never holds the state lock; reset of ~100 users and 50 concurrent logins finish well under 5 s on 2 vCPU (coordinator addition) | done |
@@ -298,7 +298,7 @@ revisions (each with `effective_at` and `recorded_at`) and authorization lifecyc
 | 286 | S2-CC-08 | Unknown outcomes are never shown as confirmed rejections | done |
 | 287 | S2-CC-09 | Refresh rules also apply to available and held amounts | done |
 | 288 | S2-CC-10 | No background polling, live sync or reload recovery required | n/a (no requirement: stated as not required) |
-| 289 | S2-UP-01 | A stage-2 service accepts an export produced by our stage-1 service (`POST /_test/import`) | todo (S3: a stage-3 service accepts stage-1 and stage-2 exports) |
+| 289 | S2-UP-01 | A stage-2 service accepts an export produced by our stage-1 service (`POST /_test/import`) | done |
 | 290 | S2-UP-02 | A browser signed in before the export/import upgrade stays signed in afterwards | done |
 | 291 | S2-UP-03 | Pending requests remain payable through the request screen after the upgrade | done |
 | 292 | S2-UP-04 | A payment whose response was lost before export is retryable after import with the same key and body; the UI recovers the original payment and refreshes the imported balance | done |
@@ -315,7 +315,7 @@ revisions (each with `effective_at` and `recorded_at`) and authorization lifecyc
 | 303 | S2-AZ-10 | Invariant: cumulative captures never exceed the authorised amount | done |
 | 304 | S2-AZ-11 | Each idempotent capture moves money once | done |
 | 305 | S2-AZ-12 | A closed hold cannot be captured again | done |
-| 306 | S2-API-01 | `GET /me` keeps `balance`; `balance` always equals `total`; adds `total`, `available`, `held` | todo (S3: total/available/held also for historical views) |
+| 306 | S2-API-01 | `GET /me` keeps `balance`; `balance` always equals `total`; adds `total`, `available`, `held` | done |
 | 307 | S2-API-02 | `held` is the sum of open holds; `available = total − held` | done |
 | 308 | S2-API-03 | With no open holds: `balance` = `total` = `available`, `held` = 0, earlier behaviour unchanged | done |
 | 309 | S2-API-04 | `POST /payments` stays an immediate transfer; no intermediate hold or capture | done |
@@ -341,7 +341,7 @@ revisions (each with `effective_at` and `recorded_at`) and authorization lifecyc
 | 329 | S2-EXP-05 | Seeded `expires_at` may be in the past (expired at reset) or the future; API-created ones may be short-lived | done |
 | 330 | S2-AC-01 | `POST /authorizations` requires `Idempotency-Key`; the caller is the payer | done |
 | 331 | S2-AC-02 | Body `to_handle`, `amount`, optional `note` (default "") and `visibility` (default "public") | done |
-| 332 | S2-AC-03 | 201 body: authorization_id, from_user_id, from_handle, to_user_id, to_handle, amount, captured_amount 0, currency, note, visibility, status `open`, expires_at, payment_id null, created_at, remaining_amount, payment_ids [] | todo (S3: every authorization body adds closed_at) |
+| 332 | S2-AC-03 | 201 body: authorization_id, from_user_id, from_handle, to_user_id, to_handle, amount, captured_amount 0, currency, note, visibility, status `open`, expires_at, payment_id null, created_at, remaining_amount, payment_ids [] | done |
 | 333 | S2-AC-04 | `expires_at` = `created_at` + `authorization_ttl_seconds` | done |
 | 334 | S2-AC-05 | Caller's `available` below `amount` → 409 `insufficient_funds` | done |
 | 335 | S2-AC-06 | `amount` below 1, above 1000000000 or not an integer → 422 `validation_failed` | done |
@@ -398,40 +398,40 @@ revisions (each with `effective_at` and `recorded_at`) and authorization lifecyc
 | 386 | S2-UA-16 | UI reflects seeded and new holds; available shown as the spending balance, including right after a reset with open holds | done |
 | 387 | S2-CON-01 | Concurrent requests give the same results as some serial order (linearizable) | done |
 | 388 | S2-CON-02 | Every requirement holds at every read | done |
-| 389 | S2-EX-01 | Export/import carry authorisations, ttl, capture records and the seven paths' idempotency receipts; format_version stays 1 | todo (S3: export/import also carry revisions, hold lifecycle events and snapshots) |
-| 390 | S3-SC-01 | The stage-1 and stage-2 requirements continue to apply, with the stage-3 additions | todo |
+| 389 | S2-EX-01 | Export/import carry authorisations, ttl, capture records and the seven paths' idempotency receipts; format_version stays 1 | done |
+| 390 | S3-SC-01 | The stage-1 and stage-2 requirements continue to apply, with the stage-3 additions | done |
 | 391 | S3-SC-02 | Users can request historical balances and paginated statements; senders can correct eligible payments while the original receipt is preserved; historical queries support both effective date and information known at a given time | todo |
-| 392 | S3-TS-01 | Every payment's `created_at` is an RFC 3339 instant with an offset identifying when it moved money; every endpoint returning a payment includes it | todo |
-| 393 | S3-TS-02 | `GET /activity` keeps its ordering by `created_at` and shows the original payment (corrections are not feed payments) | todo |
-| 394 | S3-TS-03 | Seeded payments may supply `created_at`; omitted → reset time, which is before every later API-created payment | todo |
-| 395 | S3-TS-04 | A seeded `created_at` in the future → 422 `validation_failed` from reset, state unchanged | todo |
-| 396 | S3-TS-05 | Fixture `balance` stays the balance after all seeded payments; loading seeded payments never changes it | todo |
-| 397 | S3-AS-01 | `GET /me?as_of=` optional; must be an RFC 3339 instant with an offset | todo |
-| 398 | S3-AS-02 | `as_of` as naive local time, bare date or empty value → 422 `validation_failed` | todo |
-| 399 | S3-AS-03 | Without temporal parameters `/me` keeps its existing fields (no `as_of` key) and reports current corrected values | todo |
-| 400 | S3-AS-04 | With `as_of`: balance after every payment of the caller effective at or before `as_of` and before every later one (inclusive: a payment at exactly `as_of` counts) | todo |
-| 401 | S3-AS-05 | `as_of` at or after the latest payment → the current balance | todo |
-| 402 | S3-AS-06 | `as_of` before the earliest payment → the opening balance | todo |
-| 403 | S3-AS-07 | The response echoes `as_of` exactly as given (string unchanged) | todo |
-| 404 | S3-AS-08 | `as_of` may be in the future | todo |
-| 405 | S3-ST-01 | `GET /statement?from=&to=&limit=&offset=`; `from`/`to` optional; `from` defaults to the opening of the wallet, `to` to now (the read's start) | todo |
-| 406 | S3-ST-02 | `limit` and `offset` behave exactly as in `GET /requests` (default 50, 1..200, offset ≥ 0, plain digits, else 422) | todo |
-| 407 | S3-ST-03 | `from`/`to` must be RFC 3339 instants with offset; invalid or empty → 422 `validation_failed` | todo |
-| 408 | S3-ST-04 | Entries are the caller's sent or received payments in the half-open window `[from, to)`, oldest first | todo |
-| 409 | S3-ST-05 | Body: `opening_balance`, `entries` [{`payment`, `delta`, `balance_after`, `revision`, `effective_at`, `recorded_at`}], `closing_balance`, `has_more`, `snapshot` | todo |
-| 410 | S3-ST-06 | Order: selected `effective_at` ascending (= `created_at` without corrections), then payment `id` ascending for ties | todo |
-| 411 | S3-ST-07 | `opening_balance` = balance immediately before `from`; `closing_balance` = balance immediately before `to` | todo |
-| 412 | S3-ST-08 | `opening_balance` + every `delta` in the full window = `closing_balance`; sent → negative delta, received → positive | todo |
-| 413 | S3-ST-09 | `balance_after` is the caller's balance immediately after the entry (ties applied in entry order) | todo |
-| 414 | S3-ST-10 | Pagination never changes `balance_after`, `opening_balance` or `closing_balance` (they describe the full window) | todo |
-| 415 | S3-ST-11 | Only the caller's own payments appear, even when other payments are public; feed visibility rules do not apply | todo |
-| 416 | S3-ST-12 | `has_more` is correct on the final partial page and for offsets beyond the end | todo |
-| 417 | S3-ST-13 | Requires a bearer token (401 otherwise) | todo |
-| 418 | S3-RV-01 | The service distinguishes when money took effect (`effective_at`) from when it learned it (`recorded_at`) | todo |
-| 419 | S3-RV-02 | Every payment has a revision history; revision 1 = original amount with `effective_at = recorded_at = created_at` | todo |
-| 420 | S3-RV-03 | A seeded payment's supplied `created_at` is its revision-1 recorded and effective time; omitted → reset time | todo |
-| 421 | S3-RV-04 | Opening balance = seeded ending balance − net effect of the original seeded payments; corrections never change opening balances | todo |
-| 422 | S3-RV-05 | New accounts open at zero | todo |
+| 392 | S3-TS-01 | Every payment's `created_at` is an RFC 3339 instant with an offset identifying when it moved money; every endpoint returning a payment includes it | done |
+| 393 | S3-TS-02 | `GET /activity` keeps its ordering by `created_at` and shows the original payment (corrections are not feed payments) | done |
+| 394 | S3-TS-03 | Seeded payments may supply `created_at`; omitted → reset time, which is before every later API-created payment | done |
+| 395 | S3-TS-04 | A seeded `created_at` in the future → 422 `validation_failed` from reset, state unchanged | done |
+| 396 | S3-TS-05 | Fixture `balance` stays the balance after all seeded payments; loading seeded payments never changes it | done |
+| 397 | S3-AS-01 | `GET /me?as_of=` optional; must be an RFC 3339 instant with an offset | done |
+| 398 | S3-AS-02 | `as_of` as naive local time, bare date or empty value → 422 `validation_failed` | done |
+| 399 | S3-AS-03 | Without temporal parameters `/me` keeps its existing fields (no `as_of` key) and reports current corrected values | done |
+| 400 | S3-AS-04 | With `as_of`: balance after every payment of the caller effective at or before `as_of` and before every later one (inclusive: a payment at exactly `as_of` counts) | done |
+| 401 | S3-AS-05 | `as_of` at or after the latest payment → the current balance | done |
+| 402 | S3-AS-06 | `as_of` before the earliest payment → the opening balance | done |
+| 403 | S3-AS-07 | The response echoes `as_of` exactly as given (string unchanged) | done |
+| 404 | S3-AS-08 | `as_of` may be in the future | done |
+| 405 | S3-ST-01 | `GET /statement?from=&to=&limit=&offset=`; `from`/`to` optional; `from` defaults to the opening of the wallet, `to` to now (the read's start) | done |
+| 406 | S3-ST-02 | `limit` and `offset` behave exactly as in `GET /requests` (default 50, 1..200, offset ≥ 0, plain digits, else 422) | done |
+| 407 | S3-ST-03 | `from`/`to` must be RFC 3339 instants with offset; invalid or empty → 422 `validation_failed` | done |
+| 408 | S3-ST-04 | Entries are the caller's sent or received payments in the half-open window `[from, to)`, oldest first | done |
+| 409 | S3-ST-05 | Body: `opening_balance`, `entries` [{`payment`, `delta`, `balance_after`, `revision`, `effective_at`, `recorded_at`}], `closing_balance`, `has_more`, `snapshot` | done |
+| 410 | S3-ST-06 | Order: selected `effective_at` ascending (= `created_at` without corrections), then payment `id` ascending for ties | done |
+| 411 | S3-ST-07 | `opening_balance` = balance immediately before `from`; `closing_balance` = balance immediately before `to` | done |
+| 412 | S3-ST-08 | `opening_balance` + every `delta` in the full window = `closing_balance`; sent → negative delta, received → positive | done |
+| 413 | S3-ST-09 | `balance_after` is the caller's balance immediately after the entry (ties applied in entry order) | done |
+| 414 | S3-ST-10 | Pagination never changes `balance_after`, `opening_balance` or `closing_balance` (they describe the full window) | done |
+| 415 | S3-ST-11 | Only the caller's own payments appear, even when other payments are public; feed visibility rules do not apply | done |
+| 416 | S3-ST-12 | `has_more` is correct on the final partial page and for offsets beyond the end | done |
+| 417 | S3-ST-13 | Requires a bearer token (401 otherwise) | done |
+| 418 | S3-RV-01 | The service distinguishes when money took effect (`effective_at`) from when it learned it (`recorded_at`) | done |
+| 419 | S3-RV-02 | Every payment has a revision history; revision 1 = original amount with `effective_at = recorded_at = created_at` | done |
+| 420 | S3-RV-03 | A seeded payment's supplied `created_at` is its revision-1 recorded and effective time; omitted → reset time | done |
+| 421 | S3-RV-04 | Opening balance = seeded ending balance − net effect of the original seeded payments; corrections never change opening balances | done |
+| 422 | S3-RV-05 | New accounts open at zero | done |
 | 423 | S3-RV-06 | Seeded history is promised consistent and nonnegative (no extra validation required) | n/a (promise about fixtures, no behaviour required) |
 | 424 | S3-CR-01 | `POST /payments/{payment_id}/corrections` requires an `Idempotency-Key` (eighth idempotent write path; §7 rules apply) | todo |
 | 425 | S3-CR-02 | Only the original sender may correct; an authenticated non-sender → 403 `forbidden` | todo |
@@ -457,50 +457,50 @@ revisions (each with `effective_at` and `recorded_at`) and authorization lifecyc
 | 445 | S3-CR-22 | Settlement members → 422 `linked_payment_immutable` | todo |
 | 446 | S3-CR-23 | Captures → 422 `linked_payment_immutable` | todo |
 | 447 | S3-CR-24 | Check order: 401 → key header → body object → claimed key → 404 → 403 → field validation → 422 linked → 409 stale → 409 insufficient_funds → 409 historical_overdraft | todo |
-| 448 | S3-RL-01 | `GET /payments/{payment_id}/revisions` → `{"revisions": [...]}` in revision order, including revision 1 with `reason: ""` | todo |
-| 449 | S3-RL-02 | Each revision has `payment_id`, `revision`, `amount`, `effective_at`, `recorded_at`, `reason` | todo |
-| 450 | S3-RL-03 | Only the two parties may read it; a third party → 404 even for a public payment; unknown → 404 | todo |
-| 451 | S3-RL-04 | No token → 401 | todo |
-| 452 | S3-KA-01 | `GET /me` and `GET /statement` accept optional `known_at`, an RFC 3339 instant with offset; invalid or empty → 422 | todo |
-| 453 | S3-KA-02 | Per payment, select its latest revision recorded at or before `known_at`; none recorded yet → the payment contributes nothing | todo |
-| 454 | S3-KA-03 | Omitted `known_at` = everything known when the read begins | todo |
-| 455 | S3-KA-04 | Selected revisions apply at their effective times; `as_of` stays inclusive, a statement window stays half-open | todo |
-| 456 | S3-KA-05 | `known_at` (and `as_of`) may be in the future | todo |
-| 457 | S3-KA-06 | A supplied `known_at` is echoed exactly | todo |
-| 458 | S3-KA-07 | Statement entries carry the selected `revision`, `effective_at`, `recorded_at`; `payment.amount` is the selected amount | todo |
+| 448 | S3-RL-01 | `GET /payments/{payment_id}/revisions` → `{"revisions": [...]}` in revision order, including revision 1 with `reason: ""` | done |
+| 449 | S3-RL-02 | Each revision has `payment_id`, `revision`, `amount`, `effective_at`, `recorded_at`, `reason` | done |
+| 450 | S3-RL-03 | Only the two parties may read it; a third party → 404 even for a public payment; unknown → 404 | done |
+| 451 | S3-RL-04 | No token → 401 | done |
+| 452 | S3-KA-01 | `GET /me` and `GET /statement` accept optional `known_at`, an RFC 3339 instant with offset; invalid or empty → 422 | done |
+| 453 | S3-KA-02 | Per payment, select its latest revision recorded at or before `known_at`; none recorded yet → the payment contributes nothing | done |
+| 454 | S3-KA-03 | Omitted `known_at` = everything known when the read begins | done |
+| 455 | S3-KA-04 | Selected revisions apply at their effective times; `as_of` stays inclusive, a statement window stays half-open | done |
+| 456 | S3-KA-05 | `known_at` (and `as_of`) may be in the future | done |
+| 457 | S3-KA-06 | A supplied `known_at` is echoed exactly | done |
+| 458 | S3-KA-07 | Statement entries carry the selected `revision`, `effective_at`, `recorded_at`; `payment.amount` is the selected amount | done |
 | 459 | S3-KA-08 | Zero-amount revisions still appear as entries with zero delta | todo |
 | 460 | S3-KA-09 | A correction is never counted alongside the revision it replaces | todo |
-| 461 | S3-KA-10 | With no corrections and no `known_at`, earlier behaviour is unchanged | todo |
-| 462 | S3-SN-01 | Every first `GET /statement` response returns an opaque `snapshot` token | todo |
-| 463 | S3-SN-02 | The snapshot freezes the caller's selected revisions, window, balances, entries and default `to` | todo |
-| 464 | S3-SN-03 | `GET /statement?snapshot=&limit=&offset=` pages that exact result even after later payments, corrections or lifecycle actions | todo |
-| 465 | S3-SN-04 | Only `limit` and `offset` may accompany `snapshot`; `from`, `to` or `known_at` with it → 422 `validation_failed` | todo |
-| 466 | S3-SN-05 | Unknown token, another user's token, or a token from before a reset → 404 `not_found` | todo |
-| 467 | S3-SN-06 | Tokens last until reset; surviving a container restart is not required | todo |
-| 468 | S3-SN-07 | Snapshot paging changes neither balances nor entries; final partial page and offsets beyond the end report `has_more` correctly | todo |
-| 469 | S3-SN-08 | Unrecognized query parameters stay ignored | todo |
+| 461 | S3-KA-10 | With no corrections and no `known_at`, earlier behaviour is unchanged | done |
+| 462 | S3-SN-01 | Every first `GET /statement` response returns an opaque `snapshot` token | done |
+| 463 | S3-SN-02 | The snapshot freezes the caller's selected revisions, window, balances, entries and default `to` | done |
+| 464 | S3-SN-03 | `GET /statement?snapshot=&limit=&offset=` pages that exact result even after later payments, corrections or lifecycle actions | done |
+| 465 | S3-SN-04 | Only `limit` and `offset` may accompany `snapshot`; `from`, `to` or `known_at` with it → 422 `validation_failed` | done |
+| 466 | S3-SN-05 | Unknown token, another user's token, or a token from before a reset → 404 `not_found` | done |
+| 467 | S3-SN-06 | Tokens last until reset; surviving a container restart is not required | done |
+| 468 | S3-SN-07 | Snapshot paging changes neither balances nor entries; final partial page and offsets beyond the end report `has_more` correctly | done |
+| 469 | S3-SN-08 | Unrecognized query parameters stay ignored | done |
 | 470 | S3-SN-09 | A correction may move a payment into or out of a statement window | todo |
 | 471 | S3-SN-10 | Concurrent corrections with the same `expected_revision` cannot both succeed | todo |
-| 472 | S3-SE-01 | Settlements keep their original receipts and privacy rules | todo |
-| 473 | S3-SE-02 | Each settlement member's revision 1 uses the shared `committed_at` as both `effective_at` and `recorded_at` | todo |
-| 474 | S3-SE-03 | A stage-3 service accepts exports from our stage-1 and stage-2 services | todo |
-| 475 | S3-SE-04 | Imported ledgers account for authorizations and captures | todo |
-| 476 | S3-HH-01 | `GET /me?as_of=T&known_at=K`: all four money fields describe that same view; `balance = total`, `available = total − held` | todo |
-| 477 | S3-HH-02 | A hold starts at authorization creation | todo |
-| 478 | S3-HH-03 | A nonfinal capture reduces the hold at capture time | todo |
-| 479 | S3-HH-04 | A final capture, void or expiry releases the remainder at that event's time | todo |
-| 480 | S3-HH-05 | Expiry takes effect at `expires_at` | todo |
-| 481 | S3-HH-06 | Events other than clock expiry are known at their server-assigned event time | todo |
-| 482 | S3-HH-07 | Once creation is known, the expiry deadline is known too | todo |
-| 483 | S3-HH-08 | For query instants beyond now, an open hold expires at its deadline | todo |
-| 484 | S3-HH-09 | Without `as_of`, the view is at the instant the request began | todo |
-| 485 | S3-HH-10 | Authorizations expose `closed_at`: null while open, the event time once closed | todo |
-| 486 | S3-HH-11 | Historical `total` follows the effective/recorded-time rules | todo |
+| 472 | S3-SE-01 | Settlements keep their original receipts and privacy rules | done |
+| 473 | S3-SE-02 | Each settlement member's revision 1 uses the shared `committed_at` as both `effective_at` and `recorded_at` | done |
+| 474 | S3-SE-03 | A stage-3 service accepts exports from our stage-1 and stage-2 services | done |
+| 475 | S3-SE-04 | Imported ledgers account for authorizations and captures | done |
+| 476 | S3-HH-01 | `GET /me?as_of=T&known_at=K`: all four money fields describe that same view; `balance = total`, `available = total − held` | done |
+| 477 | S3-HH-02 | A hold starts at authorization creation | done |
+| 478 | S3-HH-03 | A nonfinal capture reduces the hold at capture time | done |
+| 479 | S3-HH-04 | A final capture, void or expiry releases the remainder at that event's time | done |
+| 480 | S3-HH-05 | Expiry takes effect at `expires_at` | done |
+| 481 | S3-HH-06 | Events other than clock expiry are known at their server-assigned event time | done |
+| 482 | S3-HH-07 | Once creation is known, the expiry deadline is known too | done |
+| 483 | S3-HH-08 | For query instants beyond now, an open hold expires at its deadline | done |
+| 484 | S3-HH-09 | Without `as_of`, the view is at the instant the request began | done |
+| 485 | S3-HH-10 | Authorizations expose `closed_at`: null while open, the event time once closed | done |
+| 486 | S3-HH-11 | Historical `total` follows the effective/recorded-time rules | done |
 | 487 | S3-HH-12 | A correction making total or available negative at any past effective/event boundary, under the latest known revisions → 409 `historical_overdraft` | todo |
-| 488 | S3-HH-13 | Seeded open holds are assumed created at reset unless `created_at` is supplied; seeded closed holds need not reconstruct a lifecycle | todo |
-| 489 | S3-HH-14 | `GET /statement` contains money movements only: authorization, release and expiry are not entries | todo |
-| 490 | S3-HH-15 | Captures appear exactly once in statements, with their links (`authorization_id`) | todo |
+| 488 | S3-HH-13 | Seeded open holds are assumed created at reset unless `created_at` is supplied; seeded closed holds need not reconstruct a lifecycle | done |
+| 489 | S3-HH-14 | `GET /statement` contains money movements only: authorization, release and expiry are not entries | done |
+| 490 | S3-HH-15 | Captures appear exactly once in statements, with their links (`authorization_id`) | done |
 | 491 | S3-HH-16 | Old snapshots stay unchanged after any lifecycle action or correction | todo |
-| 492 | S3-EX-01 | Export/import carry revision histories, hold lifecycle events and statement snapshots; format_version stays 1 | todo |
-| 493 | S3-EX-02 | Importing a stage-1/stage-2 export synthesizes revision 1 (effective = recorded = created_at) and hold history; tokens, receipts and retries stay valid | todo |
-| 494 | S3-PF-01 | Statements, `/me` history and correction checks over ~10^4 payments finish well within the 5 s request budget | todo |
+| 492 | S3-EX-01 | Export/import carry revision histories, hold lifecycle events and statement snapshots; format_version stays 1 | done |
+| 493 | S3-EX-02 | Importing a stage-1/stage-2 export synthesizes revision 1 (effective = recorded = created_at) and hold history; tokens, receipts and retries stay valid | done |
+| 494 | S3-PF-01 | Statements, `/me` history and correction checks over ~10^4 payments finish well within the 5 s request budget | done |
