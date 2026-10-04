@@ -175,7 +175,6 @@ input[aria-invalid="true"] { border-color: var(--danger); }
 .msg-uncertain .icon { background: var(--uncertain); }
 .msg-success { background: var(--success-bg); color: var(--success); border-color: #b9e0c8; }
 .msg-success .icon { background: var(--success); }
-.msg .code { font-family: var(--mono); font-size: var(--fs-xs); opacity: .85; }
 
 /* ---- lists: activity, requests, holds ------------------------------------------ */
 .list { list-style: none; margin: 0; padding: 0; }
@@ -196,8 +195,10 @@ input[aria-invalid="true"] { border-color: var(--danger); }
 .item-amount .dirword { display: block; font-size: var(--fs-xs); font-weight: 600; color: var(--text-2); }
 .amt-out { color: #a23a1e; }
 .amt-in { color: var(--success); }
-.actions { grid-column: 2 / -1; display: flex; gap: var(--s2); flex-wrap: wrap; align-items: center; margin-top: var(--s2); }
-.actions select, .actions input { width: auto; min-width: 0; flex: 1 1 140px; max-width: 220px; }
+.actions { grid-column: 2 / -1; display: flex; gap: var(--s2); flex-wrap: wrap; align-items: flex-end; margin-top: var(--s2); }
+.mini-field { display: flex; flex-direction: column; gap: 4px; flex: 1 1 140px; max-width: 220px; min-width: 0; }
+.mini-label { font-size: var(--fs-xs); font-weight: 600; color: var(--text-2); }
+.card-lede { margin: -8px 0 var(--s4); }
 .badge { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 2px 9px; font-size: var(--fs-xs); font-weight: 650; border: 1px solid transparent; }
 .badge-public { background: var(--surface-2); color: var(--text-2); border-color: var(--line); }
 .badge-private { background: #eef0f3; color: #2f3a46; }

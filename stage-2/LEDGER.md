@@ -367,7 +367,7 @@ at or before the clock, so reads and writes always see the expired state.
 | 355 | S2-CP-16 | New fields do not change idempotency body equality | done |
 | 356 | S2-CP-17 | Not `open` → 409 `authorization_not_open` | done |
 | 357 | S2-CP-18 | `expires_at` at or before now → 409 `authorization_expired` | done |
-| 358 | S2-CP-19 | `amount` above the uncaptured remainder → 422 `capture_exceeds_authorization` | done |
+| 358 | S2-CP-19 | `amount` above the uncaptured remainder → 422 `capture_exceeds_authorization` (includes whole numbers above 1e9, which can never fit a remainder) | done |
 | 359 | S2-CP-20 | `amount` below 1 or not an integer → 422 `validation_failed` | done |
 | 360 | S2-CP-21 | Caller is not the receiver (incl. neither party) → 403 `forbidden` | done |
 | 361 | S2-CP-22 | Unknown authorisation → 404 `not_found` | done |
@@ -383,7 +383,7 @@ at or before the clock, so reads and writes always see the expired state.
 | 371 | S2-UA-01 | `wallet-balance` shows formatted `total` with `data-amount`, as before | done |
 | 372 | S2-UA-02 | `wallet-available` shows formatted `available` with `data-amount`, presented as the headline number | done |
 | 373 | S2-UA-03 | `wallet-held` shows formatted `held` with `data-amount`; absent when `held` is 0 | done |
-| 374 | S2-UA-04 | Authorise form `authorize-handle`, `authorize-amount`, `authorize-note`, `authorize-visibility`, `authorize-submit`, with the pay-form input rules | done |
+| 374 | S2-UA-04 | Authorise form `authorize-handle`, `authorize-amount`, `authorize-note`, `authorize-visibility`, `authorize-submit`, with the pay-form input rules (on `/` as "Reserve money" and on `/authorizations`) | done |
 | 375 | S2-UA-05 | `authorize-error` shown when an authorisation is refused, including insufficient available funds | done |
 | 376 | S2-UA-06 | `authorization-list` container on `/authorizations`; children newest first in the DOM | done |
 | 377 | S2-UA-07 | `authorization-item-{id}` with `data-status="{status}"` | done |

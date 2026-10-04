@@ -231,10 +231,10 @@ function say(slot, prefix, kind, title, detail, code) {
   slot.replaceChildren();
   if (!kind) return;
   const glyph = { error: '!', uncertain: '?', success: '✓' }[kind];
-  slot.append(h('div', { class: `msg msg-${kind}`, 'data-testid': `${prefix}-${kind}`, role: kind === 'success' ? 'status' : 'alert' },
+  // the API error code is kept for support/debugging in data-code, not in the visible text
+  slot.append(h('div', { class: `msg msg-${kind}`, 'data-testid': `${prefix}-${kind}`, role: kind === 'success' ? 'status' : 'alert', 'data-code': code || null },
     h('span', { class: 'icon', 'aria-hidden': 'true' }, glyph),
-    h('div', {}, h('strong', {}, title), detail ? h('span', {}, detail) : null,
-      code ? h('span', { class: 'code' }, ` (${code})`) : null)));
+    h('div', {}, h('strong', {}, title), detail ? h('span', {}, detail) : null)));
 }
 
 function busy(btn, on, label) {
@@ -278,6 +278,10 @@ function visibilitySelect(id, label) {
     h('option', { value: 'public' }, 'Public'),
     h('option', { value: 'private' }, 'Private'));
   return field(id, label, sel, 'Private: only the two of you see it.');
+}
+// a compact control with a small visible label, for actions inside list items
+function miniField(id, label, control) {
+  return h('div', { class: 'mini-field' }, h('label', { for: id, class: 'mini-label' }, label), control);
 }
 function cleanHandle(v) { return String(v).trim().replace(/^@/, ''); }
 
@@ -493,7 +497,10 @@ async function walletPage(main) {
       h('div', { class: 'stack' },
         h('section', { class: 'card balance-card', 'aria-label': 'Balance' }, numbers, h('div', { class: 'balance-actions' }, refreshBtn, stamp), feedStatus),
         h('section', { class: 'card', 'aria-labelledby': 'pay-title' }, h('div', { class: 'card-head' }, h('h2', { id: 'pay-title' }, 'Send money')), payForm(reload)),
-        h('section', { class: 'card', 'aria-labelledby': 'req-title' }, h('div', { class: 'card-head' }, h('h2', { id: 'req-title' }, 'Request money'), h('a', { href: '/requests', class: 'small' }, 'View requests')), requestForm(reload))),
+        h('section', { class: 'card', 'aria-labelledby': 'req-title' }, h('div', { class: 'card-head' }, h('h2', { id: 'req-title' }, 'Request money'), h('a', { href: '/requests', class: 'small' }, 'View requests')), requestForm(reload)),
+        h('section', { class: 'card', 'aria-labelledby': 'hold-title' }, h('div', { class: 'card-head' }, h('h2', { id: 'hold-title' }, 'Reserve money'), h('a', { href: '/authorizations', class: 'small' }, 'View holds')),
+          h('p', { class: 'small muted card-lede' }, 'Put money on hold for someone to collect later. It stays in your balance but can’t be spent until it’s collected, released or expires.'),
+          authorizeForm(reload))),
       h('section', { class: 'card', 'aria-labelledby': 'act-title' },
         h('div', { class: 'card-head' }, h('h2', { id: 'act-title' }, 'Activity'), h('p', {}, 'Newest first')), feed)));
   await reload();
@@ -519,7 +526,7 @@ async function requestsPage(main) {
     const pending = r.status === 'pending';
     const actions = [];
     if (pending && isIncoming) {
-      const vis = h('select', { 'aria-label': `Visibility of the payment to ${r.requester_handle}`, 'data-testid': `request-visibility-${r.request_id}` },
+      const vis = h('select', { id: `vis-${r.request_id}`, 'data-testid': `request-visibility-${r.request_id}` },
         h('option', { value: 'public' }, 'Public'), h('option', { value: 'private' }, 'Private'));
       vis.value = visChosen[r.request_id] || 'public';
       vis.addEventListener('change', () => { visChosen[r.request_id] = vis.value; });
@@ -541,7 +548,7 @@ async function requestsPage(main) {
         busy(decline, false);
         after(res, `Declined ${r.requester_handle}’s request.`, 'Couldn’t decline.');
       });
-      actions.push(vis, pay, decline);
+      actions.push(miniField(`vis-${r.request_id}`, 'Visibility', vis), pay, decline);
     }
     if (pending && !isIncoming) {
       const cancel = h('button', { class: 'btn btn-danger', type: 'button', 'data-testid': `request-cancel-${r.request_id}` }, 'Cancel request');
@@ -673,8 +680,37 @@ function splitPage(main) {
 
 // ---------------------------------------------------------------- holds (authorizations)
 
-async function authorizationsPage(main) {
+// The authorise form, used on "/" (as "Reserve money") and on "/authorizations".
+function authorizeForm(onDone, primary) {
   const ident = identity();
+  const status = h('div', { 'aria-live': 'polite' });
+  const submit = h('button', { class: `btn ${primary ? 'btn-primary' : 'btn-secondary'} btn-block`, type: 'submit', 'data-testid': 'authorize-submit' }, 'Place hold');
+  const form = h('form', { novalidate: true },
+    h('div', { class: 'row two' }, handleInput('authorize-handle', 'For'), amountInput('authorize-amount', 'Amount to hold')),
+    h('div', { class: 'row two' }, visibilitySelect('authorize-visibility', 'Who can see the payment'),
+      field('authorize-note', 'Note (optional)', h('input', { type: 'text', maxlength: '200', placeholder: 'e.g. Deposit' }))),
+    submit, status);
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    if (submit.disabled) return;
+    const handle = cleanHandle($('#authorize-handle', form).value);
+    const amt = parseAmount($('#authorize-amount', form).value);
+    if (!handle) return say(status, 'authorize', 'error', 'Who is the hold for?', ' Enter their handle.');
+    if (amt.error) return say(status, 'authorize', 'error', 'Check the amount.', ' ' + amt.error);
+    const body = JSON.stringify({ to_handle: handle, amount: amt.minor, note: $('#authorize-note', form).value, visibility: $('#authorize-visibility', form).value });
+    busy(submit, true, 'Placing hold…');
+    const r = await api('POST', '/authorizations', { body, key: ident.keyFor(body) });
+    busy(submit, false);
+    if (r.uncertain) say(status, 'authorize', 'uncertain', 'Not confirmed yet.', ' We couldn’t confirm whether this hold was placed. Retrying is safe — it will only be placed once.');
+    else if (r.ok) say(status, 'authorize', 'success', `${fmt(r.data.amount)} is on hold for ${r.data.to_handle}.`, ` It expires ${new Date(r.data.expires_at).toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}.`);
+    else { ident.reset(); say(status, 'authorize', 'error', 'Hold not placed.', ' ' + messageFor(r, { insufficient_funds: 'Not enough available funds for this hold.' }), r.code); }
+    await onDone();
+  });
+
+  return form;
+}
+
+async function authorizationsPage(main) {
   const capIdent = {};
   const summary = h('div', {});
   const alertSlot = h('div', { 'aria-live': 'polite', class: 'page-alert' });
@@ -685,14 +721,6 @@ async function authorizationsPage(main) {
   let shown = PAGE;
   let latest = {};
   const capTyped = {};
-  const status = h('div', { 'aria-live': 'polite' });
-  const submit = h('button', { class: 'btn btn-primary btn-block', type: 'submit', 'data-testid': 'authorize-submit' }, 'Place hold');
-
-  const form = h('form', { novalidate: true },
-    handleInput('authorize-handle', 'For'),
-    h('div', { class: 'row two' }, amountInput('authorize-amount', 'Amount to hold'), visibilitySelect('authorize-visibility', 'Who can see the payment')),
-    field('authorize-note', 'Note (optional)', h('input', { type: 'text', maxlength: '200', placeholder: 'e.g. Deposit' })),
-    submit, status);
 
   const item = (a) => {
     const outgoing = a.from_user_id === me.user_id;
@@ -716,7 +744,7 @@ async function authorizationsPage(main) {
         after(r, `Collected ${fmt(amt.minor)} from ${a.from_handle}.`, 'Couldn’t collect.',
           () => latest[a.authorization_id] && latest[a.authorization_id].captured_amount >= a.captured_amount + amt.minor);
       });
-      actions.push(h('label', { class: 'visually-hidden', for: `cap-${a.authorization_id}` }, `Amount to collect from ${a.from_handle}`), amountIn, capture);
+      actions.push(miniField(`cap-${a.authorization_id}`, 'Amount to collect', amountIn), capture);
     }
     if (open && outgoing) {
       const voidBtn = h('button', { class: 'btn btn-danger', type: 'button', 'data-testid': `authorization-void-${a.authorization_id}` }, 'Release hold');
@@ -765,29 +793,12 @@ async function authorizationsPage(main) {
     if (r.uncertain && confirmed && confirmed()) say(alertSlot, 'authorization', 'success', okText, ' Confirmed after reconnecting.');
   }
 
-  form.addEventListener('submit', async (ev) => {
-    ev.preventDefault();
-    if (submit.disabled) return;
-    const handle = cleanHandle($('#authorize-handle', form).value);
-    const amt = parseAmount($('#authorize-amount', form).value);
-    if (!handle) return say(status, 'authorize', 'error', 'Who is the hold for?', ' Enter their handle.');
-    if (amt.error) return say(status, 'authorize', 'error', 'Check the amount.', ' ' + amt.error);
-    const body = JSON.stringify({ to_handle: handle, amount: amt.minor, note: $('#authorize-note', form).value, visibility: $('#authorize-visibility', form).value });
-    busy(submit, true, 'Placing hold…');
-    const r = await api('POST', '/authorizations', { body, key: ident.keyFor(body) });
-    busy(submit, false);
-    if (r.uncertain) say(status, 'authorize', 'uncertain', 'Not confirmed yet.', ' We couldn’t confirm whether this hold was placed. Retrying is safe — it will only be placed once.');
-    else if (r.ok) say(status, 'authorize', 'success', `${fmt(r.data.amount)} is on hold for ${r.data.to_handle}.`, ` It expires ${new Date(r.data.expires_at).toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}.`);
-    else { ident.reset(); say(status, 'authorize', 'error', 'Hold not placed.', ' ' + messageFor(r, { insufficient_funds: 'Not enough available funds for this hold.' }), r.code); }
-    await reload();
-  });
-
   summary.append(walletNumbers(false));
   main.replaceChildren(
     h('div', { class: 'page-head' }, h('div', {}, h('h1', {}, 'Holds'), h('p', {}, 'Reserve money now; the other person collects it later.'))),
     summary, refreshSlot, alertSlot,
     h('div', { class: 'grid side' },
-      h('section', { class: 'card', 'aria-labelledby': 'hold-title' }, h('div', { class: 'card-head' }, h('h2', { id: 'hold-title' }, 'Place a hold')), form),
+      h('section', { class: 'card', 'aria-labelledby': 'hold-title' }, h('div', { class: 'card-head' }, h('h2', { id: 'hold-title' }, 'Place a hold')), authorizeForm(reload, true)),
       h('section', { class: 'card', 'aria-labelledby': 'holds-title' }, h('div', { class: 'card-head' }, h('h2', { id: 'holds-title' }, 'Your holds'), h('p', {}, 'Newest first')), emptySlot, list, moreSlot)));
   await reload();
 }

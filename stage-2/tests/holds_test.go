@@ -200,6 +200,11 @@ func TestExtendedCapture(t *testing.T) {
 	}
 	wantErr(t, cap(`{"amount":1301,"final":false}`), 422, "capture_exceeds_authorization")
 	wantErr(t, cap(`{"amount":0,"final":false}`), 422, "validation_failed")
+	// above 1e9 can never fit the remainder: the capture rule, not the generic range rule
+	wantErr(t, cap(`{"amount":1000000001,"final":false}`), 422, "capture_exceeds_authorization")
+	wantErr(t, cap(`{"amount":1e20}`), 422, "capture_exceeds_authorization")
+	wantErr(t, cap(`{"amount":-5}`), 422, "validation_failed")
+	wantErr(t, cap(`{"amount":"700"}`), 422, "validation_failed")
 	wantErr(t, cap(`{"amount":1.5}`), 422, "validation_failed")
 	wantErr(t, cap(`{"amount":5,"final":"no"}`), 400, "malformed_request")
 	p2 := wantStatus(t, cap(`{"amount":300,"final":false}`), 201)

@@ -42,6 +42,8 @@ UI behaviour worth knowing: every idempotent form keeps its Idempotency-Key whil
 unchanged, so resubmitting (or retrying after an unknown outcome) is a replay; a definite 4xx
 starts a new key. A request with no answer within 8 s, a network error or a 5xx shows the
 "not confirmed" (uncertain) state, never a refusal. Lists show 50 items with "Show more".
+The authorise form appears on `/` ("Reserve money") and on `/authorizations`. Error messages
+are plain sentences; the API error code is kept only in the message's `data-code` attribute.
 
 Shipped checks (from the kickoff folder):
 

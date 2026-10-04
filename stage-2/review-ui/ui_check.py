@@ -166,6 +166,10 @@ class Run:
         check(sw <= iw, f"no horizontal scroll: {label}", f"scrollWidth {sw} > innerWidth {iw}")
 
 
+def amount_of_avail(p):
+    return p.get_attribute(sel("wallet-available"), "data-amount")
+
+
 def text(p, t):
     return (p.text_content(sel(t)) or "").strip()
 
@@ -270,6 +274,21 @@ def wallet_flows(run, svc):
     p.wait_for_selector(f"{sel('wallet-balance')}[data-amount='6650']")
     p.wait_for_selector(sel(f"activity-item-{made['payment_id']}"))
     check(p.input_value(sel("pay-note")) == "keep me", "wallet-refresh keeps the pay form")
+
+    # authorise form on the wallet ("Reserve money")
+    p.fill(sel("authorize-handle"), "bob")
+    p.fill(sel("authorize-amount"), "10.00")
+    p.click(sel("authorize-submit"))
+    p.wait_for_selector(sel("authorize-success"))
+    p.wait_for_selector(f"{sel('wallet-held')}[data-amount='1000']")
+    check(amount_of_avail(p) == str(6650 - 1000), "authorize from the wallet: available and held refresh")
+    p.fill(sel("authorize-amount"), "99999.00")
+    p.click(sel("authorize-submit"))
+    p.wait_for_selector(sel("authorize-error"))
+    check("insufficient_funds" not in (p.text_content(sel("authorize-error")) or "")
+          and p.get_attribute(sel("authorize-error"), "data-code") == "insufficient_funds",
+          "refusal text is human; the API code is only in data-code")
+    run.shot(p, "wallet-authorize-1280")
 
     # request form
     p.fill(sel("request-handle"), "bob")
@@ -493,6 +512,13 @@ def layout(run, svc):
                 p.fill(sel("split-amount"), "100.00")
                 p.fill(sel("split-handles"), "ada,bob,cy")
             run.no_hscroll(p, f"{route} @ {vw}px")
+            unlabeled = p.evaluate("""() => [...document.querySelectorAll('input,select,textarea')].filter(e => {
+                if (e.type === 'hidden' || e.getClientRects().length === 0) return false;
+                const l = e.id && document.querySelector('label[for="' + CSS.escape(e.id) + '"]');
+                if (!l) return true;
+                const r = l.getBoundingClientRect();
+                return r.width < 2 || r.height < 2 || getComputedStyle(l).visibility === 'hidden'; }).map(e => e.outerHTML.slice(0, 90))""")
+            check(not unlabeled, f"every visible input has a visible label on {route} @ {vw}px", unlabeled)
             check(p.query_selector(sel("current-user")) is not None, f"current-user on {route} @ {vw}px")
             name = (route.strip("/") or "wallet")
             run.shot(p, f"{name}-{vw}")

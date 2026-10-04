@@ -151,11 +151,18 @@ func (s *Server) captureAuthorization(st *State, uid string, m map[string]any, p
 	var amount int64
 	v, hasAmount := m["amount"]
 	if hasAmount {
-		n, ok := integral(v)
-		if !ok || n < 1 || n > maxAmount {
-			return 0, nil, invalid("amount must be an integer from 1 to 1000000000")
+		// below 1 or not an integer: validation_failed. A whole number above 1e9 can never
+		// fit the remainder (an authorization is at most 1e9), so it is reported with the
+		// capture rule, capture_exceeds_authorization, once the status checks pass.
+		r, ok := ratOf(v)
+		if !ok || !r.IsInt() || r.Sign() < 1 {
+			return 0, nil, invalid("amount must be a whole number of at least 1")
 		}
-		amount = n
+		if n := r.Num(); n.IsInt64() && n.Int64() <= maxAmount {
+			amount = n.Int64()
+		} else {
+			amount = maxAmount + 1
+		}
 	}
 	final := true
 	if fv, present := m["final"]; present {
