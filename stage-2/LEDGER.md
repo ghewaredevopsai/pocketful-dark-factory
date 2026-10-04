@@ -21,7 +21,7 @@ at or before the clock, so reads and writes always see the expired state.
 | 9 | DL-02 | `docker-compose.yml` optional and not used to start the service | done |
 | 10 | DL-03 | Image runs on its own with `-e PORT=<port>` and a port mapping | done |
 | 11 | DL-04 | No outbound network at run time; all runtime deps, init and seed data inside the single container (vendored at build) | done |
-| 12 | DL-05 | Runtime assets (fonts, scripts, stylesheets) included in the image | todo (S2: UI assets — CSS/JS/fonts — must be in the image, no CDN) |
+| 12 | DL-05 | Runtime assets (fonts, scripts, stylesheets) included in the image | done |
 | 13 | LIM-01 | CPU limit 2 vCPU | done |
 | 14 | LIM-02 | Memory limit 2 GiB | done |
 | 15 | LIM-03 | Start to first healthy response ≤ 60 s | done |
@@ -146,7 +146,7 @@ at or before the clock, so reads and writes always see the expired state.
 | 134 | CN-02 | Cancel already-cancelled → 200 | done |
 | 135 | CN-03 | Cancel `paid` or `declined` → 409 `request_not_pending` | done |
 | 136 | CN-04 | Cancel by non-requester → 403 `forbidden` | done |
-| 137 | LR-01 | `GET /requests` returns only requests where caller is requester or payer, newest first by `created_at` | todo (S2: GET /requests with Accept: text/html serves the UI) |
+| 137 | LR-01 | `GET /requests` returns only requests where caller is requester or payer, newest first by `created_at` | done |
 | 138 | LR-02 | `direction`: `incoming` (caller payer), `outgoing` (caller requester), absent = both; unknown → 422 | done |
 | 139 | LR-03 | `status`: one of four statuses or absent = all; unknown → 422 | done |
 | 140 | LR-04 | `limit` default 50 (1–200), `offset` default 0 (≥ 0); out of range → 422 `validation_failed` | done |
@@ -212,81 +212,81 @@ at or before the clock, so reads and writes always see the expired state.
 | 200 | AU-13 | Unknown route → 404 `not_found`; known path, wrong method → 405 `method_not_allowed`, both in the error envelope; bearer checked before body/idempotency on authed endpoints (coordinator addition) | done |
 | 201 | ER-21 | Write-path precedence: 401 → missing/invalid Idempotency-Key (400/422) → body parses as object (400) → claimed key (409 / 200 replay) → field validation → resource checks (coordinator addition) | done |
 | 202 | PF-01 | Password hashing never holds the state lock; reset of ~100 users and 50 concurrent logins finish well under 5 s on 2 vCPU (coordinator addition) | done |
-| 203 | S2-SC-01 | The stage-1 requirements continue to apply, with the stage-2 additions | todo |
-| 204 | S2-SC-02 | Users manage payments, requests and bill splits in a browser, and can reserve money for a recipient to collect later in one or more captures | todo |
-| 205 | S2-RT-01 | Route `/` reachable by URL: balance, pay form, request form and activity feed | todo |
-| 206 | S2-RT-02 | Route `/requests` reachable by URL: incoming and outgoing requests with pay, decline, cancel | todo |
-| 207 | S2-RT-03 | Route `/split` reachable by URL: split form | todo |
-| 208 | S2-RT-04 | Route `/signup` reachable by URL: signup | todo |
-| 209 | S2-RT-05 | Route `/login` reachable by URL: login | todo |
-| 210 | S2-RT-06 | Route `/authorizations` reachable by URL: authorisation list (with capture/void) | todo |
-| 211 | S2-RT-07 | Other screens reachable through the UI (consistent navigation) | todo |
-| 212 | S2-RT-08 | `GET /requests` with `Accept: text/html` returns the UI; without that header returns JSON (stage-1 API unchanged) | todo |
-| 213 | S2-RT-09 | `GET /authorizations` with `Accept: text/html` returns the UI; otherwise JSON | todo |
-| 214 | S2-RT-10 | UI exposes every listed `data-testid`; extra elements allowed | todo |
-| 215 | S2-UX-01 | Coherent, presentation-ready consumer finance product with a calm, trustworthy character (not a test harness) | todo |
-| 216 | S2-UX-02 | Available funds are the clearest monetary value once holds exist; total and held visibly secondary | todo |
-| 217 | S2-UX-03 | Payments, requests, splits and authorisations easy to scan; status, direction, privacy and money movement understandable without raw API data | todo |
-| 218 | S2-UX-04 | Consistent visual system for typography, spacing, colour, controls and feedback | todo |
-| 219 | S2-UX-05 | Primary actions easy to identify | todo |
-| 220 | S2-UX-06 | Available, held, pending, loading, successful, refused and uncertain states are visually distinct | todo |
-| 221 | S2-UX-07 | People, amounts and timestamps formatted for people; technical ids only where they help | todo |
-| 222 | S2-UX-08 | Required flows usable at a 375 CSS-px viewport with no horizontal page scrolling | todo |
-| 223 | S2-UX-09 | Required flows usable at conventional desktop widths with no horizontal page scrolling | todo |
-| 224 | S2-UX-10 | Every input has a visible label | todo |
-| 225 | S2-UX-11 | Keyboard focus is visibly apparent | todo |
-| 226 | S2-UX-12 | Text and controls have sufficient contrast (target WCAG AA 4.5:1) | todo |
-| 227 | S2-UX-13 | Considered empty states | todo |
-| 228 | S2-UX-14 | Considered loading states | todo |
-| 229 | S2-UX-15 | Considered error states | todo |
-| 230 | S2-UX-16 | Navigation consistent across the required routes | todo |
-| 231 | S2-UX-17 | All UI assets (CSS, JS, any fonts) served from the image; no CDN or external fetch at run time | todo |
-| 232 | S2-AU-01 | `signup-email`, `signup-password`, `signup-display-name` inputs | todo |
-| 233 | S2-AU-02 | `signup-submit` button | todo |
-| 234 | S2-AU-03 | `login-email`, `login-password` inputs and `login-submit` button | todo |
-| 235 | S2-AU-04 | `auth-error` error message, present only when there is one | todo |
-| 236 | S2-AU-05 | `current-user` visible on every screen when signed in; text contains the display name | todo |
-| 237 | S2-AU-06 | `current-handle` text is exactly the caller's handle (no `@`, no other words) | todo |
-| 238 | S2-AU-07 | `logout-button` button | todo |
-| 239 | S2-WL-01 | `wallet-balance` text is exactly the formatted `total`; carries `data-amount="{minor units}"` | todo |
-| 240 | S2-WL-02 | `pay-handle`, `pay-amount`, `pay-note` inputs; `pay-amount` is a decimal string as typed (e.g. `15.00`) | todo |
-| 241 | S2-WL-03 | `pay-visibility` selects `public` or `private`; option values are exactly those strings | todo |
-| 242 | S2-WL-04 | `pay-submit` button | todo |
-| 243 | S2-WL-05 | `pay-error` shown when the payment is refused, including insufficient funds | todo |
-| 244 | S2-WL-06 | Request form: `request-handle`, `request-amount`, `request-note`, `request-submit` | todo |
-| 245 | S2-WL-07 | `request-error` shown when the request is refused | todo |
-| 246 | S2-WL-08 | Pay form keeps its values after success | todo |
-| 247 | S2-WL-09 | Resubmitting the unchanged pay form sends no new payment: balance falls once, feed has one payment, `pay-error` absent (same key + body replay) | todo |
-| 248 | S2-WL-10 | Changing any pay field makes the next submission a new payment (new key) | todo |
-| 249 | S2-WL-11 | UI retries follow §7 | todo |
-| 250 | S2-WL-12 | Formatted amount: exactly `minor_units` decimals, one space, currency code (`100.00 EUR`) | todo |
-| 251 | S2-WL-13 | `minor_units` 0: no decimal point (`1200 JPY`) | todo |
-| 252 | S2-WL-14 | Formatted amounts carry no sign | todo |
-| 253 | S2-WL-15 | Decimal input converts to minor units exactly: `15.00` and `15` → 1500, `15.5` → 1550 (minor_units 2); no floats | todo |
-| 254 | S2-WL-16 | Nonnumeric input, or more than `minor_units` decimals (`15.005`), shows the form's error element and sends no request; never rounds | todo |
-| 255 | S2-FD-01 | `activity-list` container; children newest first in the DOM | todo |
-| 256 | S2-FD-02 | `activity-item-{payment_id}` one per visible payment, with `data-visibility="public"|"private"` | todo |
-| 257 | S2-FD-03 | `activity-parties-{payment_id}` text contains both handles | todo |
-| 258 | S2-FD-04 | `activity-amount-{payment_id}` text is exactly the formatted amount | todo |
-| 259 | S2-FD-05 | `activity-note-{payment_id}` text is exactly the note; present even when the note is empty | todo |
-| 260 | S2-FD-06 | `empty-activity` shown instead of the list when nothing is visible | todo |
-| 261 | S2-RQ-01 | `incoming-list` and `outgoing-list` containers on `/requests` | todo |
-| 262 | S2-RQ-02 | `request-item-{request_id}` one per request, with `data-status="{status}"` | todo |
-| 263 | S2-RQ-03 | `request-amount-{request_id}` text is exactly the formatted amount | todo |
-| 264 | S2-RQ-04 | `request-pay-{request_id}` button present only on a pending incoming request | todo |
-| 265 | S2-RQ-05 | `request-decline-{request_id}` button present only on a pending incoming request | todo |
-| 266 | S2-RQ-06 | `request-cancel-{request_id}` button present only on a pending outgoing request | todo |
-| 267 | S2-RQ-07 | `request-error` shown when a pay, decline or cancel is refused | todo |
-| 268 | S2-RQ-08 | `empty-requests` shown when both lists are empty | todo |
-| 269 | S2-SP-01 | `split-amount` decimal input, same rule as `pay-amount` | todo |
-| 270 | S2-SP-02 | `split-handles` text input: comma-separated handles, in order | todo |
-| 271 | S2-SP-03 | `split-note` input and `split-submit` button | todo |
-| 272 | S2-SP-04 | `split-preview` shows computed shares before submitting, with one `split-share-{handle}` per participant | todo |
-| 273 | S2-SP-05 | `split-share-{handle}` text is exactly the formatted share | todo |
-| 274 | S2-SP-06 | `split-error` shown when the split is refused | todo |
-| 275 | S2-SP-07 | Preview uses the §9 rule; preview and submitted split have identical shares | todo |
-| 276 | S2-RF-01 | After any successful action, balance, feed and request lists on the same page show the new state without manual reload | todo |
-| 277 | S2-RF-02 | Refresh after a write waits for the write to succeed | todo |
+| 203 | S2-SC-01 | The stage-1 requirements continue to apply, with the stage-2 additions | done |
+| 204 | S2-SC-02 | Users manage payments, requests and bill splits in a browser, and can reserve money for a recipient to collect later in one or more captures | done |
+| 205 | S2-RT-01 | Route `/` reachable by URL: balance, pay form, request form and activity feed | done |
+| 206 | S2-RT-02 | Route `/requests` reachable by URL: incoming and outgoing requests with pay, decline, cancel | done |
+| 207 | S2-RT-03 | Route `/split` reachable by URL: split form | done |
+| 208 | S2-RT-04 | Route `/signup` reachable by URL: signup | done |
+| 209 | S2-RT-05 | Route `/login` reachable by URL: login | done |
+| 210 | S2-RT-06 | Route `/authorizations` reachable by URL: authorisation list (with capture/void) | done |
+| 211 | S2-RT-07 | Other screens reachable through the UI (consistent navigation) | done |
+| 212 | S2-RT-08 | `GET /requests` with `Accept: text/html` returns the UI; without that header returns JSON (stage-1 API unchanged) | done |
+| 213 | S2-RT-09 | `GET /authorizations` with `Accept: text/html` returns the UI; otherwise JSON | done |
+| 214 | S2-RT-10 | UI exposes every listed `data-testid`; extra elements allowed | done |
+| 215 | S2-UX-01 | Coherent, presentation-ready consumer finance product with a calm, trustworthy character (not a test harness) | done |
+| 216 | S2-UX-02 | Available funds are the clearest monetary value once holds exist; total and held visibly secondary | done |
+| 217 | S2-UX-03 | Payments, requests, splits and authorisations easy to scan; status, direction, privacy and money movement understandable without raw API data | done |
+| 218 | S2-UX-04 | Consistent visual system for typography, spacing, colour, controls and feedback | done |
+| 219 | S2-UX-05 | Primary actions easy to identify | done |
+| 220 | S2-UX-06 | Available, held, pending, loading, successful, refused and uncertain states are visually distinct | done |
+| 221 | S2-UX-07 | People, amounts and timestamps formatted for people; technical ids only where they help | done |
+| 222 | S2-UX-08 | Required flows usable at a 375 CSS-px viewport with no horizontal page scrolling | done |
+| 223 | S2-UX-09 | Required flows usable at conventional desktop widths with no horizontal page scrolling | done |
+| 224 | S2-UX-10 | Every input has a visible label | done |
+| 225 | S2-UX-11 | Keyboard focus is visibly apparent | done |
+| 226 | S2-UX-12 | Text and controls have sufficient contrast (target WCAG AA 4.5:1) | done |
+| 227 | S2-UX-13 | Considered empty states | done |
+| 228 | S2-UX-14 | Considered loading states | done |
+| 229 | S2-UX-15 | Considered error states | done |
+| 230 | S2-UX-16 | Navigation consistent across the required routes | done |
+| 231 | S2-UX-17 | All UI assets (CSS, JS, any fonts) served from the image; no CDN or external fetch at run time | done |
+| 232 | S2-AU-01 | `signup-email`, `signup-password`, `signup-display-name` inputs | done |
+| 233 | S2-AU-02 | `signup-submit` button | done |
+| 234 | S2-AU-03 | `login-email`, `login-password` inputs and `login-submit` button | done |
+| 235 | S2-AU-04 | `auth-error` error message, present only when there is one | done |
+| 236 | S2-AU-05 | `current-user` visible on every screen when signed in; text contains the display name | done |
+| 237 | S2-AU-06 | `current-handle` text is exactly the caller's handle (no `@`, no other words) | done |
+| 238 | S2-AU-07 | `logout-button` button | done |
+| 239 | S2-WL-01 | `wallet-balance` text is exactly the formatted `total`; carries `data-amount="{minor units}"` | done |
+| 240 | S2-WL-02 | `pay-handle`, `pay-amount`, `pay-note` inputs; `pay-amount` is a decimal string as typed (e.g. `15.00`) | done |
+| 241 | S2-WL-03 | `pay-visibility` selects `public` or `private`; option values are exactly those strings | done |
+| 242 | S2-WL-04 | `pay-submit` button | done |
+| 243 | S2-WL-05 | `pay-error` shown when the payment is refused, including insufficient funds | done |
+| 244 | S2-WL-06 | Request form: `request-handle`, `request-amount`, `request-note`, `request-submit` | done |
+| 245 | S2-WL-07 | `request-error` shown when the request is refused | done |
+| 246 | S2-WL-08 | Pay form keeps its values after success | done |
+| 247 | S2-WL-09 | Resubmitting the unchanged pay form sends no new payment: balance falls once, feed has one payment, `pay-error` absent (same key + body replay) | done |
+| 248 | S2-WL-10 | Changing any pay field makes the next submission a new payment (new key) | done |
+| 249 | S2-WL-11 | UI retries follow §7 | done |
+| 250 | S2-WL-12 | Formatted amount: exactly `minor_units` decimals, one space, currency code (`100.00 EUR`) | done |
+| 251 | S2-WL-13 | `minor_units` 0: no decimal point (`1200 JPY`) | done |
+| 252 | S2-WL-14 | Formatted amounts carry no sign | done |
+| 253 | S2-WL-15 | Decimal input converts to minor units exactly: `15.00` and `15` → 1500, `15.5` → 1550 (minor_units 2); no floats | done |
+| 254 | S2-WL-16 | Nonnumeric input, or more than `minor_units` decimals (`15.005`), shows the form's error element and sends no request; never rounds | done |
+| 255 | S2-FD-01 | `activity-list` container; children newest first in the DOM | done |
+| 256 | S2-FD-02 | `activity-item-{payment_id}` one per visible payment, with `data-visibility="public"|"private"` | done |
+| 257 | S2-FD-03 | `activity-parties-{payment_id}` text contains both handles | done |
+| 258 | S2-FD-04 | `activity-amount-{payment_id}` text is exactly the formatted amount | done |
+| 259 | S2-FD-05 | `activity-note-{payment_id}` text is exactly the note; present even when the note is empty | done |
+| 260 | S2-FD-06 | `empty-activity` shown instead of the list when nothing is visible | done |
+| 261 | S2-RQ-01 | `incoming-list` and `outgoing-list` containers on `/requests` | done |
+| 262 | S2-RQ-02 | `request-item-{request_id}` one per request, with `data-status="{status}"` | done |
+| 263 | S2-RQ-03 | `request-amount-{request_id}` text is exactly the formatted amount | done |
+| 264 | S2-RQ-04 | `request-pay-{request_id}` button present only on a pending incoming request | done |
+| 265 | S2-RQ-05 | `request-decline-{request_id}` button present only on a pending incoming request | done |
+| 266 | S2-RQ-06 | `request-cancel-{request_id}` button present only on a pending outgoing request | done |
+| 267 | S2-RQ-07 | `request-error` shown when a pay, decline or cancel is refused | done |
+| 268 | S2-RQ-08 | `empty-requests` shown when both lists are empty | done |
+| 269 | S2-SP-01 | `split-amount` decimal input, same rule as `pay-amount` | done |
+| 270 | S2-SP-02 | `split-handles` text input: comma-separated handles, in order | done |
+| 271 | S2-SP-03 | `split-note` input and `split-submit` button | done |
+| 272 | S2-SP-04 | `split-preview` shows computed shares before submitting, with one `split-share-{handle}` per participant | done |
+| 273 | S2-SP-05 | `split-share-{handle}` text is exactly the formatted share | done |
+| 274 | S2-SP-06 | `split-error` shown when the split is refused | done |
+| 275 | S2-SP-07 | Preview uses the §9 rule; preview and submitted split have identical shares | done |
+| 276 | S2-RF-01 | After any successful action, balance, feed and request lists on the same page show the new state without manual reload | done |
+| 277 | S2-RF-02 | Refresh after a write waits for the write to succeed | done |
 | 278 | S2-RF-03 | No live-update/polling requirement (only own actions and explicit refresh) | n/a (no requirement: stated as not required) |
 | 279 | S2-CC-01 | `wallet-refresh` button on `/` refreshes balance and feed without clearing the pay form | todo |
 | 280 | S2-CC-02 | Latest refresh wins: an earlier read arriving late never overwrites a later refresh (out-of-order responses) | todo |
@@ -380,22 +380,22 @@ at or before the clock, so reads and writes always see the expired state.
 | 368 | S2-LA-02 | `direction`: `outgoing` (payer), `incoming` (receiver), absent = both; unknown value → 422 | done |
 | 369 | S2-LA-03 | `status`: one of the four, or absent = all; clock-expired matches `expired`, never `open`; unknown value → 422 | done |
 | 370 | S2-LA-04 | `limit`, `offset`, `has_more` behave exactly as on `GET /requests`; body `{"authorizations": [...], "has_more": bool}` | done |
-| 371 | S2-UA-01 | `wallet-balance` shows formatted `total` with `data-amount`, as before | todo |
-| 372 | S2-UA-02 | `wallet-available` shows formatted `available` with `data-amount`, presented as the headline number | todo |
-| 373 | S2-UA-03 | `wallet-held` shows formatted `held` with `data-amount`; absent when `held` is 0 | todo |
-| 374 | S2-UA-04 | Authorise form `authorize-handle`, `authorize-amount`, `authorize-note`, `authorize-visibility`, `authorize-submit`, with the pay-form input rules | todo |
-| 375 | S2-UA-05 | `authorize-error` shown when an authorisation is refused, including insufficient available funds | todo |
-| 376 | S2-UA-06 | `authorization-list` container on `/authorizations`; children newest first in the DOM | todo |
-| 377 | S2-UA-07 | `authorization-item-{id}` with `data-status="{status}"` | todo |
-| 378 | S2-UA-08 | `authorization-amount-{id}` text is exactly the formatted authorised amount | todo |
-| 379 | S2-UA-09 | `authorization-captured-{id}` formatted captured amount, present only when status is `captured` | todo |
-| 380 | S2-UA-10 | `authorization-expires-{id}` text is the RFC 3339 `expires_at` | todo |
-| 381 | S2-UA-11 | `authorization-capture-amount-{id}` decimal input pre-filled with the remaining amount; only on an incoming open authorisation | todo |
-| 382 | S2-UA-12 | `authorization-capture-{id}` button only on an incoming open authorisation | todo |
-| 383 | S2-UA-13 | `authorization-void-{id}` button only on an outgoing open authorisation | todo |
-| 384 | S2-UA-14 | `authorization-error` shown when a capture or void is refused | todo |
-| 385 | S2-UA-15 | `empty-authorizations` shown when the list is empty | todo |
-| 386 | S2-UA-16 | UI reflects seeded and new holds; available shown as the spending balance, including right after a reset with open holds | todo |
+| 371 | S2-UA-01 | `wallet-balance` shows formatted `total` with `data-amount`, as before | done |
+| 372 | S2-UA-02 | `wallet-available` shows formatted `available` with `data-amount`, presented as the headline number | done |
+| 373 | S2-UA-03 | `wallet-held` shows formatted `held` with `data-amount`; absent when `held` is 0 | done |
+| 374 | S2-UA-04 | Authorise form `authorize-handle`, `authorize-amount`, `authorize-note`, `authorize-visibility`, `authorize-submit`, with the pay-form input rules | done |
+| 375 | S2-UA-05 | `authorize-error` shown when an authorisation is refused, including insufficient available funds | done |
+| 376 | S2-UA-06 | `authorization-list` container on `/authorizations`; children newest first in the DOM | done |
+| 377 | S2-UA-07 | `authorization-item-{id}` with `data-status="{status}"` | done |
+| 378 | S2-UA-08 | `authorization-amount-{id}` text is exactly the formatted authorised amount | done |
+| 379 | S2-UA-09 | `authorization-captured-{id}` formatted captured amount, present only when status is `captured` | done |
+| 380 | S2-UA-10 | `authorization-expires-{id}` text is the RFC 3339 `expires_at` | done |
+| 381 | S2-UA-11 | `authorization-capture-amount-{id}` decimal input pre-filled with the remaining amount; only on an incoming open authorisation | done |
+| 382 | S2-UA-12 | `authorization-capture-{id}` button only on an incoming open authorisation | done |
+| 383 | S2-UA-13 | `authorization-void-{id}` button only on an outgoing open authorisation | done |
+| 384 | S2-UA-14 | `authorization-error` shown when a capture or void is refused | done |
+| 385 | S2-UA-15 | `empty-authorizations` shown when the list is empty | done |
+| 386 | S2-UA-16 | UI reflects seeded and new holds; available shown as the spending balance, including right after a reset with open holds | done |
 | 387 | S2-CON-01 | Concurrent requests give the same results as some serial order (linearizable) | done |
 | 388 | S2-CON-02 | Every requirement holds at every read | done |
 | 389 | S2-EX-01 | Export/import carry authorisations, ttl, capture records and the seven paths' idempotency receipts; format_version stays 1 | done |

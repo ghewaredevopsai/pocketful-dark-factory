@@ -50,7 +50,7 @@ func (s *Server) routes() []route {
 		{"GET", []string{"me"}, s.authed(s.me)},
 		{"POST", []string{"payments"}, s.idempotent(s.postPayment)},
 		{"POST", []string{"requests"}, s.idempotent(s.postRequest)},
-		{"GET", []string{"requests"}, s.authed(s.listRequests)},
+		{"GET", []string{"requests"}, s.negotiate(s.authed(s.listRequests))},
 		{"POST", []string{"requests", "*", "pay"}, s.idempotent(s.payRequest)},
 		{"POST", []string{"requests", "*", "decline"}, s.authed(s.declineRequest)},
 		{"POST", []string{"requests", "*", "cancel"}, s.authed(s.cancelRequest)},
@@ -59,7 +59,12 @@ func (s *Server) routes() []route {
 		{"POST", []string{"settlements"}, s.idempotentGuarded(operatorOnly, s.postSettlement)},
 		{"GET", []string{"_test", "export"}, s.export},
 		{"POST", []string{"authorizations"}, s.idempotent(s.postAuthorization)},
-		{"GET", []string{"authorizations"}, s.authed(s.listAuthorizations)},
+		{"GET", []string{"authorizations"}, s.negotiate(s.authed(s.listAuthorizations))},
+		{"GET", []string{""}, s.page},
+		{"GET", []string{"split"}, s.page},
+		{"GET", []string{"signup"}, s.page},
+		{"GET", []string{"login"}, s.page},
+		{"GET", []string{"static", "*"}, s.static},
 		{"POST", []string{"authorizations", "*", "capture"}, s.idempotent(s.captureAuthorization)},
 		{"POST", []string{"authorizations", "*", "void"}, s.authed(s.voidAuthorization)},
 		{"POST", []string{"_test", "import"}, s.importState},
@@ -109,6 +114,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		if body == nil {
 			w.WriteHeader(status)
+			return
+		}
+		if raw, ok := body.(rawBody); ok {
+			w.Header().Set("Content-Type", raw.ctype)
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			w.WriteHeader(status)
+			_, _ = w.Write(raw.b)
 			return
 		}
 		writeJSON(w, status, body)
