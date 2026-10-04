@@ -151,10 +151,7 @@ func (s *Server) me(r *http.Request, uid string, _ []string) (int, any, *apiErr)
 		body["balance"], body["total"], body["available"], body["held"] = u.Balance, u.Balance, st.available(u), st.held[u.ID]
 		return 200, body, nil
 	}
-	start := time.Now().UnixNano() // the instant the read began
-	if st.LastStamp > start {
-		start = st.LastStamp
-	}
+	start := st.nowFloor() // the instant the read began
 	t, k := start, start
 	if hasAsOf {
 		t = asOf

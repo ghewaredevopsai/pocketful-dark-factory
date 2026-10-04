@@ -501,7 +501,7 @@ func startStage(t *testing.T, dir string) string {
 	}
 	t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
 	u := fmt.Sprintf("http://127.0.0.1:%d", port)
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 300; i++ { // up to 15 s: the machine may be busy
 		if r, err := http.Get(u + "/health"); err == nil {
 			r.Body.Close()
 			return u

@@ -41,7 +41,7 @@ func (s *Server) postCorrection(st *State, uid string, m map[string]any, params 
 		ok = err == nil
 		effNs = t.UnixNano()
 	}
-	if !ok || effNs > time.Now().UnixNano() {
+	if !ok || effNs > st.nowFloor() {
 		return 0, nil, invalid("effective_at must be an RFC 3339 instant with an offset, not later than now")
 	}
 	if p.SettlementID != nil || p.AuthID != nil {

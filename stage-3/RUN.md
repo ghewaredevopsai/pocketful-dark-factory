@@ -37,6 +37,22 @@ capture, void, correction) is ordered after every earlier one. Authorization `ex
 payments and seeded open holds without `created_at` take the reset instant itself (µs, on the same
 clock): at or after every supplied seeded `created_at` and before every later API event.
 
+Time-handling rules (audit): one wall clock (`app/clock.go`, pinnable in tests) feeds
+`stamp()` = max(wall, last stamp + 1µs) for every money event; checks and reads use
+`nowFloor()` = max(wall, last stamp), so "now" is never before an event already recorded.
+- Reset: one reset stamp; omitted seeded `created_at` (payments, open holds) = that instant;
+  supplied values and seeded `closed_at` must not be after it (422); a supplied seeded hold's
+  `closed_at` may not precede its supplied `created_at` (422).
+- Import: every imported revision, hold creation and close raises the clock floor, so new events
+  are stamped after all imported history even if this container's clock is behind.
+- Expiry: the sweep uses `nowFloor()`; a capture or void also checks its own stamp, so an event
+  stamped at or after `expires_at` finds the hold expired (409), never captures it.
+- Corrections: `effective_at` must not be after `nowFloor()` nor after the correction's own
+  `recorded_at`.
+- Snapshots: K = min(known_at, read stamp); every later write is stamped after the read.
+- Requests and splits use whole-second `created_at`; they are not money events and appear in no
+  balance or history computation.
+
 The browser UI is one HTML shell, one stylesheet and one script embedded in the binary
 (`app/ui/`), rendered client-side from the JSON API. It uses the system font stack and makes no
 requests outside the service. `/requests` and `/authorizations` serve the UI to

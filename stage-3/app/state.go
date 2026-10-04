@@ -139,8 +139,17 @@ const microLayout = "2006-01-02T15:04:05.000000-07:00"
 // stamp returns a new event instant from the monotonic state clock: never earlier than
 // the wall clock, always at least 1µs after the previous stamp. Everything recorded after
 // a statement snapshot is therefore strictly later than the snapshot.
+// nowFloor is "now" for checks: the wall clock, but never before the last event stamp
+// (stamps may run a few µs ahead of the wall clock in a burst).
+func (st *State) nowFloor() int64 {
+	if t := clockNow(); t > st.LastStamp {
+		return t
+	}
+	return st.LastStamp
+}
+
 func (st *State) stamp() (string, int64) {
-	t := time.Now().UnixNano() / 1000 * 1000
+	t := clockNow() / 1000 * 1000
 	if t <= st.LastStamp {
 		t = st.LastStamp + 1000
 	}
@@ -148,7 +157,7 @@ func (st *State) stamp() (string, int64) {
 	return time.Unix(0, t).UTC().Format(microLayout), t
 }
 
-func now() string { return time.Now().UTC().Format(stampLayout) }
+func now() string { return time.Unix(0, clockNow()).UTC().Format(stampLayout) }
 
 func (s *State) index() {
 	s.userByID = map[string]*User{}
@@ -221,6 +230,9 @@ func (s *State) index() {
 		} else if a.ClosedAt == nil { // closed before stage 3: synthesize the close time
 			c := s.synthesizedClose(a)
 			a.ClosedAt = &c
+		}
+		if a.at > s.LastStamp {
+			s.LastStamp = a.at // later events are stamped after every imported creation
 		}
 		a.closed = 0
 		if a.ClosedAt != nil {
@@ -577,8 +589,8 @@ func parseFixture(m map[string]any) (*State, []seedUser, *apiErr) {
 		}
 		if v, present := o["closed_at"]; present && v != nil && a.Status != "open" {
 			c, good := v.(string)
-			if !good || stampNanos(c) == 0 {
-				return bad("authorizations[%d].closed_at", i)
+			if !good || stampNanos(c) == 0 || stampNanos(c) > resetNs {
+				return bad("authorizations[%d].closed_at must be an RFC 3339 instant not in the future", i)
 			}
 			a.ClosedAt = &c
 		}
@@ -588,6 +600,11 @@ func parseFixture(m map[string]any) (*State, []seedUser, *apiErr) {
 			a.CreatedAt = resetStr
 		} else if a.CreatedAt, good = stamp(o); !good || stampNanos(a.CreatedAt) > resetNs {
 			return bad("authorizations[%d].created_at", i)
+		}
+		// a closed seeded hold need not reconstruct its lifecycle; only when both instants
+		// are supplied must the close not precede the creation
+		if v, present := o["created_at"]; present && v != nil && a.ClosedAt != nil && stampNanos(*a.ClosedAt) < stampNanos(a.CreatedAt) {
+			return bad("authorizations[%d].closed_at is before created_at", i)
 		}
 		a.Seq = st.seq()
 		a.at, a.exp = stampNanos(a.CreatedAt), stampNanos(a.ExpiresAt)

@@ -48,7 +48,7 @@ func (a *Authorization) remaining() int64 {
 // lock takes the single state lock and applies expiry up to now.
 func (s *Server) lock() {
 	s.mu.Lock()
-	s.st.sweep(time.Now().UnixNano())
+	s.st.sweep(s.st.nowFloor())
 }
 
 func (st *State) sweep(now int64) {
@@ -195,6 +195,12 @@ func (s *Server) captureAuthorization(st *State, uid string, m map[string]any, p
 		}
 		final = b
 	}
+	// the capture's own event instant decides expiry: a hold whose expires_at is at or
+	// before it has expired, even if the sweep (wall clock) still saw it open
+	at, atNs := st.stamp()
+	if a.Status == "open" && a.exp <= atNs {
+		st.close(a, "expired", a.ExpiresAt)
+	}
 	switch a.Status {
 	case "open":
 	case "expired":
@@ -216,7 +222,6 @@ func (s *Server) captureAuthorization(st *State, uid string, m map[string]any, p
 	// one atomic step: money moves out of the payer's total, the hold shrinks by the same
 	// amount, and a final capture releases the rest
 	id := a.ID
-	at, _ := st.stamp()
 	p := st.transfer(payer, receiver, amount, a.Note, a.Visibility, nil, nil, at)
 	p.AuthID = &id
 	st.held[a.From] -= amount
@@ -241,9 +246,12 @@ func (s *Server) voidAuthorization(r *http.Request, uid string, params []string)
 	if a.From != uid {
 		return 0, nil, forbidden("only the payer may void an authorization")
 	}
+	at, atNs := st.stamp() // the void's event instant also decides expiry
+	if a.Status == "open" && a.exp <= atNs {
+		st.close(a, "expired", a.ExpiresAt)
+	}
 	switch a.Status {
 	case "open":
-		at, _ := st.stamp()
 		st.close(a, "voided", at)
 	case "voided":
 	default:
