@@ -302,6 +302,7 @@ type entryView struct {
 	Revision     int    `json:"revision"`
 	EffectiveAt  string `json:"effective_at"`
 	RecordedAt   string `json:"recorded_at"`
+	BatchID      any    `json:"correction_batch_id,omitempty"` // stage-4 snapshots only (null or the id)
 }
 
 func (st *State) renderStatement(token string, snap *Snapshot, limit, offset int) map[string]any {
@@ -317,7 +318,11 @@ func (st *State) renderStatement(token string, snap *Snapshot, limit, offset int
 			payment = legacyPaymentView{pv.PaymentID, pv.FromUserID, pv.FromHandle, pv.ToUserID, pv.ToHandle, pv.Amount,
 				pv.Currency, pv.Note, pv.Visibility, pv.RequestID, pv.SettlementID, pv.AuthID, pv.CreatedAt}
 		}
-		out = append(out, entryView{payment, en.d, en.bal, en.rv.N, en.rv.EffectiveAt, en.rv.RecordedAt})
+		ev := entryView{payment, en.d, en.bal, en.rv.N, en.rv.EffectiveAt, en.rv.RecordedAt, nil}
+		if snap.V4 {
+			ev.BatchID = nullable(en.rv.BatchID)
+		}
+		out = append(out, ev)
 	}
 	body := map[string]any{"opening_balance": opening, "entries": out, "closing_balance": closing,
 		"has_more": more, "snapshot": token}
@@ -355,4 +360,16 @@ func (s *Server) getRevisions(r *http.Request, uid string, params []string) (int
 		out = append(out, revView(p, rv))
 	}
 	return 200, map[string]any{"revisions": out}, nil
+}
+
+// jsonNull renders as JSON null through an omitempty interface field.
+type jsonNull struct{}
+
+func (jsonNull) MarshalJSON() ([]byte, error) { return []byte("null"), nil }
+
+func nullable(p *string) any {
+	if p == nil {
+		return jsonNull{}
+	}
+	return *p
 }

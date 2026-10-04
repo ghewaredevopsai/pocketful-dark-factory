@@ -21,29 +21,11 @@ func (s *Server) postCorrection(st *State, uid string, m map[string]any, params 
 	if p.From != uid {
 		return 0, nil, forbidden("only the original sender may correct a payment")
 	}
-	// fields: every invalid value or wrong type is 422 validation_failed
-	exp, ok := integral(m["expected_revision"])
-	if !ok || exp < 1 {
-		return 0, nil, invalid("expected_revision must be a positive integer")
+	f, e := st.correctionFields(m)
+	if e != nil {
+		return 0, nil, e
 	}
-	amount, ok := integral(m["amount"])
-	if !ok || amount < 0 || amount > maxAmount {
-		return 0, nil, invalid("amount must be an integer from 0 to 1000000000")
-	}
-	reason, ok := m["reason"].(string)
-	if !ok || runeLen(reason) < 1 || runeLen(reason) > 200 {
-		return 0, nil, invalid("reason must be a string of 1 to 200 characters")
-	}
-	effStr, ok := m["effective_at"].(string)
-	var effNs int64
-	if ok {
-		t, err := time.Parse(time.RFC3339Nano, effStr)
-		ok = err == nil
-		effNs = t.UnixNano()
-	}
-	if !ok || effNs > st.nowFloor() {
-		return 0, nil, invalid("effective_at must be an RFC 3339 instant with an offset, not later than now")
-	}
+	exp, amount, reason, effStr, effNs := f.exp, f.amount, f.reason, f.effStr, f.effNs
 	if p.SettlementID != nil || p.AuthID != nil || p.RefundOf != nil {
 		return 0, nil, errf(422, "linked_payment_immutable", "settlement members, captures and refunds cannot be corrected")
 	}
@@ -82,6 +64,41 @@ func (s *Server) postCorrection(st *State, uid string, m map[string]any, params 
 	sender.Balance -= diff
 	receiver.Balance += diff
 	return 201, revView(p, rv), nil
+}
+
+// correctionFields are the validated fields of one correction (single or batch item).
+type correctionFields struct {
+	exp, amount int64
+	reason      string
+	effStr      string
+	effNs       int64
+}
+
+// correctionFields validates expected_revision, amount, effective_at and reason; every
+// invalid value or wrong type is 422 validation_failed. "Now" is nowFloor(): never before
+// an event already stamped.
+func (st *State) correctionFields(m map[string]any) (correctionFields, *apiErr) {
+	var f correctionFields
+	var ok bool
+	if f.exp, ok = integral(m["expected_revision"]); !ok || f.exp < 1 {
+		return f, invalid("expected_revision must be a positive integer")
+	}
+	if f.amount, ok = integral(m["amount"]); !ok || f.amount < 0 || f.amount > maxAmount {
+		return f, invalid("amount must be an integer from 0 to 1000000000")
+	}
+	if f.reason, ok = m["reason"].(string); !ok || runeLen(f.reason) < 1 || runeLen(f.reason) > 200 {
+		return f, invalid("reason must be a string of 1 to 200 characters")
+	}
+	f.effStr, ok = m["effective_at"].(string)
+	if ok {
+		t, err := time.Parse(time.RFC3339Nano, f.effStr)
+		ok = err == nil
+		f.effNs = t.UnixNano()
+	}
+	if !ok || f.effNs > st.nowFloor() {
+		return f, invalid("effective_at must be an RFC 3339 instant with an offset, not later than now")
+	}
+	return f, nil
 }
 
 // historyOK reports whether u's total and available stay nonnegative at every

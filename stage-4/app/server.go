@@ -59,6 +59,7 @@ func (s *Server) routes() []route {
 		{"GET", []string{"payments", "*", "revisions"}, s.authed(s.getRevisions)},
 		{"POST", []string{"payments", "*", "corrections"}, s.idempotent(s.postCorrection)},
 		{"POST", []string{"payments", "*", "refunds"}, s.idempotent(s.postRefund)},
+		{"POST", []string{"correction-batches"}, s.idempotentGuarded(operatorOnly, s.postCorrectionBatch)},
 		{"POST", []string{"splits"}, s.idempotent(s.postSplit)},
 		{"POST", []string{"settlements"}, s.idempotentGuarded(operatorOnly, s.postSettlement)},
 		{"GET", []string{"_test", "export"}, s.export},

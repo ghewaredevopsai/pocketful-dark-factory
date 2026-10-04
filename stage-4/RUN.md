@@ -31,6 +31,21 @@ Refunds are immutable; they never reopen requests or authorizations or change se
 payment body carries `refund_of` (null otherwise); stored older receipts and statement snapshots
 taken by older stages replay in their original form.
 
+`POST /correction-batches` (the tenth idempotent write path, settlement operators only) corrects
+1..32 payments at once. Check order: 401 → 403 (not an operator) → Idempotency-Key header → body
+object → claimed key (200 replay of the original batch response / 409 reuse) → shape (an array of
+1..32 objects with distinct payment_ids, else 422) → item errors in input order, within an item:
+404 → 422 fields → 422 `linked_payment_immutable` (captures, refunds) → 409 `stale_revision` → 422
+`refund_exceeds_payment` → 422 `incomplete_settlement` (every member of a touched settlement must
+be included) → 422 `validation_failed` (members at differing effective instants) → 409
+`insufficient_funds` (the combined net change per wallet against available) → 409
+`historical_overdraft` (all candidate revisions applied together, every boundary of every
+affected wallet). A refusal changes nothing and claims no key. Success: 201 with
+`correction_batch_id`, one shared `recorded_at` (strictly later than every member's previous
+revision) and the revisions in input order, each carrying `correction_batch_id`. Settlement
+members are corrected only this way; original payments, settlement receipts and older statement
+snapshots never change.
+
 `POST /payments/{id}/corrections` (the eighth idempotent write path) appends a revision (revision objects carry
 `correction_batch_id`, null for single corrections). Check
 order: 401 → Idempotency-Key header → body is a JSON object → already-claimed key (200 replay of
@@ -64,6 +79,10 @@ Time-handling rules (audit): one wall clock (`app/clock.go`, pinnable in tests) 
 - Snapshots: K = min(known_at, read stamp); every later write is stamped after the read.
 - Requests and splits use whole-second `created_at`; they are not money events and appear in no
   balance or history computation.
+- Stage 4: refunds are stamped with `stamp()`; correction batches validate every `effective_at`
+  against `nowFloor()` (shared with single corrections through `correctionFields`) and take ONE
+  `stamp()` as the shared `recorded_at`, which is after every recorded revision because stamps only
+  increase. No new code reads the wall clock directly or truncates an instant.
 
 The browser UI is one HTML shell, one stylesheet and one script embedded in the binary
 (`app/ui/`), rendered client-side from the JSON API. It uses the system font stack and makes no

@@ -40,6 +40,7 @@ type State struct {
 	requestByID  map[string]*Request
 	authByID     map[string]*Authorization
 	refunded     map[string]int64        // payment id -> sum of its refunds (stage 4)
+	batches      map[string]bool         // correction batch ids in use (stage 4)
 	open         map[*Authorization]bool // open authorizations, for the expiry sweep
 	held         map[string]int64        // user id -> sum of open holds' remaining amounts
 }
@@ -182,6 +183,7 @@ func (s *State) index() {
 		s.operator[id] = true
 	}
 	s.refunded = map[string]int64{}
+	s.batches = map[string]bool{}
 	for _, p := range s.Payments {
 		s.paymentByID[p.ID] = p
 		p.at = stampNanos(p.CreatedAt)
@@ -192,6 +194,9 @@ func (s *State) index() {
 			p.Revisions = []*Revision{{N: 1, Amount: p.Amount, EffectiveAt: p.CreatedAt, RecordedAt: p.CreatedAt}}
 		}
 		for _, rv := range p.Revisions {
+			if rv.BatchID != nil {
+				s.batches[*rv.BatchID] = true
+			}
 			rv.eff, rv.rec = stampNanos(rv.EffectiveAt), stampNanos(rv.RecordedAt)
 			if rv.rec > s.LastStamp {
 				s.LastStamp = rv.rec
@@ -273,7 +278,7 @@ func (s *State) newID(prefix string) string {
 		s.NextID++
 		id := fmt.Sprintf("%s%d", prefix, s.NextID)
 		if s.userByID[id] == nil && s.paymentByID[id] == nil && s.requestByID[id] == nil && !s.settlements[id] &&
-			s.authByID[id] == nil {
+			s.authByID[id] == nil && !s.batches[id] {
 			return id
 		}
 	}

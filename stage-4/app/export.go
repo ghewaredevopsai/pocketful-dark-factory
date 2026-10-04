@@ -185,5 +185,40 @@ func validateState(st *State) *apiErr {
 			return bad("refunds exceed their payment")
 		}
 	}
+	// stage 4: every correction batch shares one recorded_at; settlement members change
+	// only together (same number of revisions, each later revision from one batch at one
+	// effective instant)
+	batchRec := map[string]int64{}
+	members := map[string][]*Payment{}
+	for _, p := range st.Payments {
+		for _, rv := range p.Revisions {
+			if rv.BatchID == nil {
+				continue
+			}
+			if *rv.BatchID == "" {
+				return bad("empty correction_batch_id")
+			}
+			if r, ok := batchRec[*rv.BatchID]; ok && r != rv.rec {
+				return bad("a correction batch's revisions differ in recorded_at")
+			}
+			batchRec[*rv.BatchID] = rv.rec
+		}
+		if p.SettlementID != nil {
+			members[*p.SettlementID] = append(members[*p.SettlementID], p)
+		}
+	}
+	for _, ms := range members {
+		for _, p := range ms[1:] {
+			if len(p.Revisions) != len(ms[0].Revisions) {
+				return bad("settlement members were corrected separately")
+			}
+			for k := 1; k < len(p.Revisions); k++ {
+				a, b := p.Revisions[k], ms[0].Revisions[k]
+				if a.BatchID == nil || b.BatchID == nil || *a.BatchID != *b.BatchID || a.eff != b.eff {
+					return bad("settlement members were corrected separately")
+				}
+			}
+		}
+	}
 	return nil
 }

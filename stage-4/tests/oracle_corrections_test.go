@@ -28,8 +28,10 @@ type lRev struct{ amount, eff, rec int64 }
 
 type lPay struct {
 	id, from, to string
-	linked       bool   // settlement member, capture or refund: not correctable
+	linked       bool   // settlement member, capture or refund: not correctable singly
 	refundOf     string // stage 4: the refunded payment ("" otherwise)
+	settle       string // settlement id ("" otherwise)
+	batchImm     bool   // capture or refund: not correctable in a batch either
 	revs         []lRev
 }
 
@@ -152,6 +154,94 @@ func (l *ledger) decide(p *lPay, expected int, amount, eff, now int64) (int, str
 	return 201, ""
 }
 
+type refItem struct {
+	p      *lPay // nil = unknown payment
+	exp    int
+	amount int64
+	eff    int64
+}
+
+// decideBatch: the naive reference for POST /correction-batches (shape is generated valid).
+func (l *ledger) decideBatch(items []refItem, now int64) (int, string) {
+	for _, it := range items { // item errors in input order
+		if it.p == nil {
+			return 404, "not_found"
+		}
+		if it.p.batchImm {
+			return 422, "linked_payment_immutable"
+		}
+		if it.exp != len(it.p.revs) {
+			return 409, "stale_revision"
+		}
+		if it.amount < l.refunded(it.p) {
+			return 422, "refund_exceeds_payment"
+		}
+	}
+	var touched []string
+	in := map[string]bool{}
+	for _, it := range items {
+		in[it.p.id] = true
+		if it.p.settle != "" && !contains2(touched, it.p.settle) {
+			touched = append(touched, it.p.settle)
+		}
+	}
+	for _, sid := range touched {
+		for _, q := range l.pays {
+			if q.settle == sid && !in[q.id] {
+				return 422, "incomplete_settlement"
+			}
+		}
+	}
+	for _, sid := range touched {
+		var eff *int64
+		for i, it := range items {
+			if it.p.settle == sid {
+				if eff == nil {
+					eff = &items[i].eff
+				} else if *eff != it.eff {
+					return 422, "validation_failed"
+				}
+			}
+		}
+	}
+	net := map[string]int64{}
+	for _, it := range items {
+		d := it.amount - it.p.revs[len(it.p.revs)-1].amount
+		net[it.p.from] -= d
+		net[it.p.to] += d
+	}
+	for u, d := range net {
+		if d < 0 && l.total(u, math.MaxInt64, math.MaxInt64)-l.held(u, now, math.MaxInt64) < -d {
+			return 409, "insufficient_funds"
+		}
+	}
+	for _, it := range items {
+		it.p.revs = append(it.p.revs, lRev{it.amount, it.eff, math.MaxInt64 - 1})
+	}
+	ok := true
+	for u := range net {
+		if !l.historyOK(u) {
+			ok = false
+		}
+	}
+	for _, it := range items {
+		it.p.revs = it.p.revs[:len(it.p.revs)-1]
+	}
+	if !ok {
+		return 409, "historical_overdraft"
+	}
+	return 201, ""
+}
+
+func contains2(xs []string, x string) bool {
+	for _, y := range xs {
+		if y == x {
+			return true
+		}
+	}
+	return false
+}
+
 func (l *ledger) statement(u string, from *int64, to, k int64) (int64, []refEntry, int64) {
 	open := l.opening[u]
 	type ent struct {
@@ -204,7 +294,8 @@ func TestOracleWithCorrections(t *testing.T) {
 	}
 	t.Logf("correction outcomes across seeds: %v", outcomes)
 	for _, want := range []string{"201", "stale_revision", "insufficient_funds", "historical_overdraft", "linked_payment_immutable", "replay",
-		"refund", "refund:refund_exceeds_payment", "refund:invalid_refund_target", "refund_exceeds_payment"} {
+		"refund", "refund:refund_exceeds_payment", "refund:invalid_refund_target", "refund_exceeds_payment",
+		"batch", "batch:stale_revision", "batch:incomplete_settlement", "batch:linked_payment_immutable"} {
 		if outcomes[want] == 0 {
 			t.Errorf("the random runs never produced %s", want)
 		}
@@ -261,6 +352,10 @@ func correctionsRun(t *testing.T, seed int64, outcomes map[string]int) {
 		at := parseNs(body["created_at"].(string))
 		p := &lPay{id: body["payment_id"].(string), from: body["from_user_id"].(string), to: body["to_user_id"].(string), linked: linked,
 			revs: []lRev{{num(body["amount"]), at, at}}}
+		if sid, ok := body["settlement_id"].(string); ok {
+			p.settle = sid
+		}
+		p.batchImm = body["authorization_id"] != nil || body["refund_of"] != nil
 		l.pays = append(l.pays, p)
 		l.byID[p.id] = p
 		instants = append(instants, at)
@@ -333,7 +428,82 @@ func correctionsRun(t *testing.T, seed int64, outcomes map[string]int) {
 	for step := 0; step < 90; step++ {
 		u := "u_" + names[rng.Intn(4)]
 		other := "u_" + names[rng.Intn(4)]
-		switch op := rng.Intn(12); {
+		switch op := rng.Intn(14); {
+		case op >= 12: // a correction batch by the operator (dee)
+			var items []refItem
+			used := map[string]bool{}
+			add := func(p *lPay, eff int64) {
+				if used[p.id] || len(items) >= 32 {
+					return
+				}
+				used[p.id] = true
+				exp := len(p.revs)
+				if rng.Intn(10) == 0 {
+					exp = 1 + rng.Intn(len(p.revs)+1)
+				}
+				cur := p.revs[len(p.revs)-1].amount
+				a := []int64{0, cur, cur + int64(rng.Intn(300)), cur - int64(rng.Intn(300)), int64(rng.Intn(1500))}[rng.Intn(5)]
+				if a < 0 {
+					a = 0
+				}
+				items = append(items, refItem{p, exp, a, eff})
+			}
+			pickEff := func() int64 {
+				now := time.Now().Add(-time.Millisecond).UnixNano()
+				e := []int64{instants[rng.Intn(len(instants))], instants[rng.Intn(len(instants))] + 1000, base.Add(-time.Hour).UnixNano(), now}[rng.Intn(4)]
+				if e > now {
+					e = now
+				}
+				return e
+			}
+			for n := 1 + rng.Intn(4); n > 0; n-- {
+				p := l.pays[rng.Intn(len(l.pays))]
+				eff := pickEff()
+				if p.settle != "" && rng.Intn(4) > 0 { // usually the complete settlement, at one instant
+					for _, q := range l.pays {
+						if q.settle == p.settle {
+							e := eff
+							if rng.Intn(8) == 0 {
+								e = pickEff() // sometimes a differing instant
+							}
+							add(q, e)
+						}
+					}
+					continue
+				}
+				add(p, eff)
+			}
+			var parts []string
+			for _, it := range items {
+				parts = append(parts, fmt.Sprintf(`{"payment_id":%q,"expected_revision":%d,"amount":%d,"effective_at":%q,"reason":"b"}`, it.p.id, it.exp, it.amount, fmtNs(it.eff)))
+			}
+			if rng.Intn(15) == 0 { // an unknown payment somewhere in the batch
+				parts = append(parts, fmt.Sprintf(`{"payment_id":"p_nope","expected_revision":1,"amount":1,"effective_at":%q,"reason":"b"}`, fmtNs(base.UnixNano())))
+				items = append(items, refItem{nil, 1, 1, base.UnixNano()})
+			}
+			wantSt, wantCode := l.decideBatch(items, time.Now().UnixNano())
+			r := post(t, srv, "/correction-batches", tok["u_dee"], newKey(), `{"corrections":[`+joinStr(parts)+`]}`)
+			code := ""
+			if e, ok := r.body["error"].(map[string]any); ok {
+				code, _ = e["code"].(string)
+			}
+			if r.status != wantSt || code != wantCode {
+				t.Fatalf("step %d batch of %d: got %d %s, reference %d %s", step, len(items), r.status, r.raw, wantSt, wantCode)
+			}
+			if r.status == 201 {
+				rec := parseNs(r.body["recorded_at"].(string))
+				for _, it := range items {
+					if prev := it.p.revs[len(it.p.revs)-1].rec; rec <= prev {
+						t.Fatalf("shared recorded_at %s not after %s", fmtNs(rec), fmtNs(prev))
+					}
+					it.p.revs = append(it.p.revs, lRev{it.amount, it.eff, rec})
+					instants = append(instants, it.eff)
+				}
+				instants = append(instants, rec)
+				outcomes["batch"]++
+			} else {
+				outcomes["batch:"+wantCode]++
+			}
 		case op >= 10: // refunds by the receiver, of any kind of target
 			p := l.pays[rng.Intn(len(l.pays))]
 			cur := p.revs[len(p.revs)-1].amount

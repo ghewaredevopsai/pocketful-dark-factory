@@ -98,7 +98,7 @@ Serialization point: unchanged, one global `Server.mu`; one monotonic µs event 
 | 88 | AU-10 | Tokens do not expire; multiple valid tokens and concurrent sessions per account | done |
 | 89 | AU-11 | Passwords stored with bcrypt/scrypt/Argon2 or equivalent; never plaintext | done |
 | 90 | AU-12 | Email verification, password reset, refresh tokens, role management out of scope | n/a (out of scope by text) |
-| 91 | ID-01 | Idempotency key required on `POST /payments`, `POST /requests`, `POST /requests/{id}/pay`, `POST /splits`, `POST /settlements`, each independently | todo (S4: ten idempotent paths incl. refunds and correction batches) |
+| 91 | ID-01 | Idempotency key required on `POST /payments`, `POST /requests`, `POST /requests/{id}/pay`, `POST /splits`, `POST /settlements`, each independently | done |
 | 92 | ID-02 | Key scoped to the authenticated user; same key string across users has no interaction | done |
 | 93 | ID-03 | Replay = same user, same method, same path, same body; same key+body on a different path is a new request and succeeds normally | done |
 | 94 | ID-04 | Header absent or empty → 400 `missing_idempotency_key` | done |
@@ -322,7 +322,7 @@ Serialization point: unchanged, one global `Server.mu`; one monotonic µs event 
 | 312 | S2-API-07 | Settlement affordability uses `available` (net debits cannot spend held funds) | done |
 | 313 | S2-API-08 | Paying a request stays immediate; authorising a request is out of scope | done |
 | 314 | S2-API-09 | `POST /splits` unchanged | done |
-| 315 | S2-API-10 | Seven idempotent write paths: stage 1's five, `POST /authorizations`, `POST /authorizations/{id}/capture`; replay rules apply to each independently | todo (S4: ten idempotent paths) |
+| 315 | S2-API-10 | Seven idempotent write paths: stage 1's five, `POST /authorizations`, `POST /authorizations/{id}/capture`; replay rules apply to each independently | done |
 | 316 | S2-API-11 | Payments not created by a capture carry `authorization_id: null`; `request_id` semantics unchanged | done |
 | 317 | S2-FX-01 | Fixture `authorization_ttl_seconds` applies to every API-created authorisation; default 600 when omitted | done |
 | 318 | S2-FX-02 | `authorization_ttl_seconds`, if supplied, must be a positive integer number of seconds, otherwise 422 `validation_failed` | done |
@@ -431,7 +431,7 @@ Serialization point: unchanged, one global `Server.mu`; one monotonic µs event 
 | 421 | S3-RV-04 | Opening balance = seeded ending balance − net effect of the original seeded payments; corrections never change opening balances | done |
 | 422 | S3-RV-05 | New accounts open at zero | done |
 | 423 | S3-RV-06 | Seeded history is promised consistent and nonnegative (no extra validation required) | n/a (promise about fixtures, no behaviour required) |
-| 424 | S3-CR-01 | `POST /payments/{payment_id}/corrections` requires an `Idempotency-Key` (eighth idempotent write path; §7 rules apply) | todo (S4: corrections stay one of now ten idempotent paths) |
+| 424 | S3-CR-01 | `POST /payments/{payment_id}/corrections` requires an `Idempotency-Key` (eighth idempotent write path; §7 rules apply) | done |
 | 425 | S3-CR-02 | Only the original sender may correct; an authenticated non-sender → 403 `forbidden` | done |
 | 426 | S3-CR-03 | Unknown payment → 404 `not_found` | done |
 | 427 | S3-CR-04 | Body fields `expected_revision`, `amount`, `effective_at`, `reason` all required; missing → 422 `validation_failed` | done |
@@ -452,7 +452,7 @@ Serialization point: unchanged, one global `Server.mu`; one monotonic µs event 
 | 442 | S3-CR-19 | Either failure preserves balances, revision history, statements and idempotency state (no key claimed) | done |
 | 443 | S3-CR-20 | The sum of balances equals the seeded total in every historical view | done |
 | 444 | S3-CR-21 | The original payment and every original idempotent response remain unchanged | done |
-| 445 | S3-CR-22 | Settlement members → 422 `linked_payment_immutable` | todo (S4: still 422 linked_payment_immutable on the single endpoint; members correctable only through a complete batch) |
+| 445 | S3-CR-22 | Settlement members → 422 `linked_payment_immutable` | done |
 | 446 | S3-CR-23 | Captures → 422 `linked_payment_immutable` | done |
 | 447 | S3-CR-24 | Check order: 401 → key header → body object → claimed key → 404 → 403 → field validation → 422 linked → 409 stale → 409 insufficient_funds → 409 historical_overdraft | done |
 | 448 | S3-RL-01 | `GET /payments/{payment_id}/revisions` → `{"revisions": [...]}` in revision order, including revision 1 with `reason: ""` | done |
@@ -503,8 +503,8 @@ Serialization point: unchanged, one global `Server.mu`; one monotonic µs event 
 | 493 | S3-EX-02 | Importing a stage-1/stage-2 export synthesizes revision 1 (effective = recorded = created_at) and hold history; tokens, receipts and retries stay valid | done |
 | 494 | S3-PF-01 | Statements, `/me` history and correction checks over ~10^4 payments finish well within the 5 s request budget | done |
 | 495 | S4-SC-01 | The stage-1, stage-2 and stage-3 requirements continue to apply | done |
-| 496 | S4-SC-02 | Recipients can refund payments; settlement operators can correct several payments in one request, including settlement payments; existing receipts and saved statements stay available in their original form | todo |
-| 497 | S4-ID-01 | Ten idempotent write paths: stage 1's five, authorizations, captures, corrections, refunds, correction batches; §7 replay rules apply to each independently | todo |
+| 496 | S4-SC-02 | Recipients can refund payments; settlement operators can correct several payments in one request, including settlement payments; existing receipts and saved statements stay available in their original form | done |
+| 497 | S4-ID-01 | Ten idempotent write paths: stage 1's five, authorizations, captures, corrections, refunds, correction batches; §7 replay rules apply to each independently | done |
 | 498 | S4-RF-01 | `POST /payments/{payment_id}/refunds`, body `{"amount": n}`, requires an `Idempotency-Key` | done |
 | 499 | S4-RF-02 | Only the original receiver may refund; anyone else authenticated → 403 `forbidden` | done |
 | 500 | S4-RF-03 | Unknown payment → 404 `not_found` | done |
@@ -529,33 +529,33 @@ Serialization point: unchanged, one global `Server.mu`; one monotonic µs event 
 | 519 | S4-CR-05 | Correction debits are checked against available funds (409 `insufficient_funds`) | done |
 | 520 | S4-CR-06 | Refund payments stay effective at their own created_at; corrections of their target never shift them; historical checks include them | done |
 | 521 | S4-CR-07 | Single-correction check order: … → 403 → 422 validation_failed → 422 linked_payment_immutable → 409 stale_revision → 422 refund_exceeds_payment → 409 insufficient_funds → 409 historical_overdraft | done |
-| 522 | S4-CB-01 | `POST /correction-batches` requires a settlement operator and an `Idempotency-Key`; no token → 401; authenticated non-operator → 403 `forbidden` (same rules as settlements) | todo |
-| 523 | S4-CB-02 | Body `{"corrections": [...]}` with 1..32 objects, else 422 `validation_failed` | todo |
-| 524 | S4-CB-03 | payment_ids in a batch must be distinct, else 422 `validation_failed` | todo |
-| 525 | S4-CB-04 | Every item has the ordinary correction fields and validation (expected_revision, amount, effective_at, reason) → 422 `validation_failed` | todo |
-| 526 | S4-CB-05 | An item's unknown payment → 404 `not_found` | todo |
-| 527 | S4-CB-06 | An item's stale expected revision → 409 `stale_revision` | todo |
-| 528 | S4-CB-07 | The operator may correct ordinary, request and settlement payments of any wallets | todo |
-| 529 | S4-CB-08 | Captures and refunds stay immutable in a batch → 422 `linked_payment_immutable` | todo |
-| 530 | S4-CB-09 | An item may not reduce a payment below its refunded amount → 422 `refund_exceeds_payment` | todo |
-| 531 | S4-CB-10 | Correcting any settlement member requires including every member of that settlement → 422 `incomplete_settlement` | todo |
-| 532 | S4-CB-11 | Members of one settlement must have identical effective instants (offset spellings may differ) → else 422 `validation_failed` | todo |
-| 533 | S4-CB-12 | Ordinary single-payment corrections remain available for nonmembers | todo |
-| 534 | S4-CB-13 | Unknown fields are ignored | todo |
-| 535 | S4-CB-14 | Precedence: item errors in input order → settlement completeness → resulting current available funds → historical total and available at every effective/event boundary | todo |
-| 536 | S4-CB-15 | Affordability is the combined effect of all proposed revisions (net change per wallet) | todo |
-| 537 | S4-CB-16 | A rejected batch leaves history, balances and idempotency records unchanged | todo |
-| 538 | S4-CB-17 | 201 body: `correction_batch_id`, `recorded_at`, `revisions` (in input order) | todo |
-| 539 | S4-CB-18 | All new revisions share recorded_at, strictly later than the previous recorded_at of every member | todo |
-| 540 | S4-CB-19 | Each revision exposes `correction_batch_id` (in the batch response and in revision lists) | todo |
-| 541 | S4-CB-20 | Effective times cannot be later than now | todo |
-| 542 | S4-CB-21 | Original payments and receipts never change; original payment and settlement retries return their original bodies | todo |
-| 543 | S4-CB-22 | New statements reflect the new revisions; earlier snapshot tokens keep paging their frozen entries | todo |
-| 544 | S4-CB-23 | Replays return the original batch response with 200 | todo |
-| 545 | S4-CB-24 | Concurrent corrections sharing any expected payment revision cannot both succeed (batch vs batch, batch vs single) | todo |
-| 546 | S4-SM-01 | Settlement receipts and privacy rules are unchanged by refunds and batch corrections | todo |
+| 522 | S4-CB-01 | `POST /correction-batches` requires a settlement operator and an `Idempotency-Key`; no token → 401; authenticated non-operator → 403 `forbidden` (same rules as settlements) | done |
+| 523 | S4-CB-02 | Body `{"corrections": [...]}` with 1..32 objects, else 422 `validation_failed` | done |
+| 524 | S4-CB-03 | payment_ids in a batch must be distinct, else 422 `validation_failed` | done |
+| 525 | S4-CB-04 | Every item has the ordinary correction fields and validation (expected_revision, amount, effective_at, reason) → 422 `validation_failed` | done |
+| 526 | S4-CB-05 | An item's unknown payment → 404 `not_found` | done |
+| 527 | S4-CB-06 | An item's stale expected revision → 409 `stale_revision` | done |
+| 528 | S4-CB-07 | The operator may correct ordinary, request and settlement payments of any wallets | done |
+| 529 | S4-CB-08 | Captures and refunds stay immutable in a batch → 422 `linked_payment_immutable` | done |
+| 530 | S4-CB-09 | An item may not reduce a payment below its refunded amount → 422 `refund_exceeds_payment` | done |
+| 531 | S4-CB-10 | Correcting any settlement member requires including every member of that settlement → 422 `incomplete_settlement` | done |
+| 532 | S4-CB-11 | Members of one settlement must have identical effective instants (offset spellings may differ) → else 422 `validation_failed` | done |
+| 533 | S4-CB-12 | Ordinary single-payment corrections remain available for nonmembers | done |
+| 534 | S4-CB-13 | Unknown fields are ignored | done |
+| 535 | S4-CB-14 | Precedence: item errors in input order → settlement completeness → resulting current available funds → historical total and available at every effective/event boundary | done |
+| 536 | S4-CB-15 | Affordability is the combined effect of all proposed revisions (net change per wallet) | done |
+| 537 | S4-CB-16 | A rejected batch leaves history, balances and idempotency records unchanged | done |
+| 538 | S4-CB-17 | 201 body: `correction_batch_id`, `recorded_at`, `revisions` (in input order) | done |
+| 539 | S4-CB-18 | All new revisions share recorded_at, strictly later than the previous recorded_at of every member | done |
+| 540 | S4-CB-19 | Each revision exposes `correction_batch_id` (in the batch response and in revision lists) | done |
+| 541 | S4-CB-20 | Effective times cannot be later than now | done |
+| 542 | S4-CB-21 | Original payments and receipts never change; original payment and settlement retries return their original bodies | done |
+| 543 | S4-CB-22 | New statements reflect the new revisions; earlier snapshot tokens keep paging their frozen entries | done |
+| 544 | S4-CB-23 | Replays return the original batch response with 200 | done |
+| 545 | S4-CB-24 | Concurrent corrections sharing any expected payment revision cannot both succeed (batch vs batch, batch vs single) | done |
+| 546 | S4-SM-01 | Settlement receipts and privacy rules are unchanged by refunds and batch corrections | done |
 | 547 | S4-IM-01 | A stage-4 service accepts exports from our stage-1, stage-2 and stage-3 services, keeping settlement membership, corrections and snapshots | done |
-| 548 | S4-IM-02 | Stage-4 export/import carries refunds (refund_of links) and correction batches (ids on revisions, receipts) | todo |
-| 549 | S4-HI-01 | Refunds and batch revisions appear in as_of/known_at views and statements under the stage-3 rules; the sum of balances equals the seeded total in every view | todo |
-| 550 | S4-HI-02 | Saved statement snapshots stay byte-identical after refunds and batch corrections | todo |
-| 551 | S4-CON-01 | One serialization point; concurrent refunds, corrections and batches stay linearizable (no double spend, no lost revision) | todo |
+| 548 | S4-IM-02 | Stage-4 export/import carries refunds (refund_of links) and correction batches (ids on revisions, receipts) | done |
+| 549 | S4-HI-01 | Refunds and batch revisions appear in as_of/known_at views and statements under the stage-3 rules; the sum of balances equals the seeded total in every view | done |
+| 550 | S4-HI-02 | Saved statement snapshots stay byte-identical after refunds and batch corrections | done |
+| 551 | S4-CON-01 | One serialization point; concurrent refunds, corrections and batches stay linearizable (no double spend, no lost revision) | done |
