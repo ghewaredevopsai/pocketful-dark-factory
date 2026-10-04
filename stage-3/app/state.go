@@ -328,7 +328,10 @@ func parseFixture(m map[string]any) (*State, []seedUser, *apiErr) {
 	}
 	// reset time: the default instant of seeded payments; every later API event is
 	// stamped after it, and seeded instants may not lie after it (no future history)
-	resetStr, resetNs := st.stamp()
+	_, resetNs := st.stamp()
+	// whole seconds, like API-created holds: seeded payments and seeded holds without
+	// created_at share this instant, and every later API event sorts after it
+	resetStr := time.Unix(0, resetNs).UTC().Truncate(time.Second).Format(stampLayout)
 	stamp := func(o map[string]any) (string, bool) {
 		v, present := o["created_at"]
 		if !present || v == nil {
@@ -579,7 +582,11 @@ func parseFixture(m map[string]any) (*State, []seedUser, *apiErr) {
 			}
 			a.ClosedAt = &c
 		}
-		if a.CreatedAt, good = stamp(o); !good || stampNanos(a.CreatedAt) > resetNs {
+		// a seeded open hold without created_at was created at reset (the same instant as
+		// seeded payments without created_at, so its history starts consistent)
+		if v, present := o["created_at"]; !present || v == nil {
+			a.CreatedAt = resetStr
+		} else if a.CreatedAt, good = stamp(o); !good || stampNanos(a.CreatedAt) > resetNs {
 			return bad("authorizations[%d].created_at", i)
 		}
 		a.Seq = st.seq()

@@ -21,6 +21,19 @@ Stage 3 adds `GET /me?as_of=&known_at=`, `GET /statement` (with frozen `snapshot
 revisions (effective and recorded times) and hold lifecycle events; new payment and hold event
 times carry microseconds and come from a monotonic clock.
 
+`POST /payments/{id}/corrections` (the eighth idempotent write path) appends a revision. Check
+order: 401 → Idempotency-Key header → body is a JSON object → already-claimed key (200 replay of
+the original revision / 409 `idempotency_key_reuse`) → 404 unknown payment → 403 not the original
+sender → 422 `validation_failed` (any invalid field) → 422 `linked_payment_immutable` (settlement
+members, captures) → 409 `stale_revision` → 409 `insufficient_funds` (the current debit against
+available) → 409 `historical_overdraft` (total or available negative at any past boundary of
+either party, all movements at one instant combined). A refusal changes nothing and claims no key.
+
+Time precision: payments, revisions (`recorded_at`) and hold events (captures, voids) use
+microseconds (`2026-10-04T04:43:43.123456+00:00`) from a monotonic clock, so `recorded_at` strictly
+increases per payment. Authorization `created_at`/`expires_at`, requests and splits keep whole
+seconds; the reset time used for seeded payments and holds without `created_at` is whole seconds.
+
 The browser UI is one HTML shell, one stylesheet and one script embedded in the binary
 (`app/ui/`), rendered client-side from the JSON API. It uses the system font stack and makes no
 requests outside the service. `/requests` and `/authorizations` serve the UI to

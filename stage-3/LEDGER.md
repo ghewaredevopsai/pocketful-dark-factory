@@ -100,7 +100,7 @@ revisions (each with `effective_at` and `recorded_at`) and authorization lifecyc
 | 88 | AU-10 | Tokens do not expire; multiple valid tokens and concurrent sessions per account | done |
 | 89 | AU-11 | Passwords stored with bcrypt/scrypt/Argon2 or equivalent; never plaintext | done |
 | 90 | AU-12 | Email verification, password reset, refresh tokens, role management out of scope | n/a (out of scope by text) |
-| 91 | ID-01 | Idempotency key required on `POST /payments`, `POST /requests`, `POST /requests/{id}/pay`, `POST /splits`, `POST /settlements`, each independently | todo (S3: eight idempotent paths incl. corrections) |
+| 91 | ID-01 | Idempotency key required on `POST /payments`, `POST /requests`, `POST /requests/{id}/pay`, `POST /splits`, `POST /settlements`, each independently | done |
 | 92 | ID-02 | Key scoped to the authenticated user; same key string across users has no interaction | done |
 | 93 | ID-03 | Replay = same user, same method, same path, same body; same key+body on a different path is a new request and succeeds normally | done |
 | 94 | ID-04 | Header absent or empty → 400 `missing_idempotency_key` | done |
@@ -324,7 +324,7 @@ revisions (each with `effective_at` and `recorded_at`) and authorization lifecyc
 | 312 | S2-API-07 | Settlement affordability uses `available` (net debits cannot spend held funds) | done |
 | 313 | S2-API-08 | Paying a request stays immediate; authorising a request is out of scope | done |
 | 314 | S2-API-09 | `POST /splits` unchanged | done |
-| 315 | S2-API-10 | Seven idempotent write paths: stage 1's five, `POST /authorizations`, `POST /authorizations/{id}/capture`; replay rules apply to each independently | todo (S3: eight idempotent paths incl. corrections) |
+| 315 | S2-API-10 | Seven idempotent write paths: stage 1's five, `POST /authorizations`, `POST /authorizations/{id}/capture`; replay rules apply to each independently | done |
 | 316 | S2-API-11 | Payments not created by a capture carry `authorization_id: null`; `request_id` semantics unchanged | done |
 | 317 | S2-FX-01 | Fixture `authorization_ttl_seconds` applies to every API-created authorisation; default 600 when omitted | done |
 | 318 | S2-FX-02 | `authorization_ttl_seconds`, if supplied, must be a positive integer number of seconds, otherwise 422 `validation_failed` | done |
@@ -400,7 +400,7 @@ revisions (each with `effective_at` and `recorded_at`) and authorization lifecyc
 | 388 | S2-CON-02 | Every requirement holds at every read | done |
 | 389 | S2-EX-01 | Export/import carry authorisations, ttl, capture records and the seven paths' idempotency receipts; format_version stays 1 | done |
 | 390 | S3-SC-01 | The stage-1 and stage-2 requirements continue to apply, with the stage-3 additions | done |
-| 391 | S3-SC-02 | Users can request historical balances and paginated statements; senders can correct eligible payments while the original receipt is preserved; historical queries support both effective date and information known at a given time | todo |
+| 391 | S3-SC-02 | Users can request historical balances and paginated statements; senders can correct eligible payments while the original receipt is preserved; historical queries support both effective date and information known at a given time | done |
 | 392 | S3-TS-01 | Every payment's `created_at` is an RFC 3339 instant with an offset identifying when it moved money; every endpoint returning a payment includes it | done |
 | 393 | S3-TS-02 | `GET /activity` keeps its ordering by `created_at` and shows the original payment (corrections are not feed payments) | done |
 | 394 | S3-TS-03 | Seeded payments may supply `created_at`; omitted → reset time, which is before every later API-created payment | done |
@@ -433,30 +433,30 @@ revisions (each with `effective_at` and `recorded_at`) and authorization lifecyc
 | 421 | S3-RV-04 | Opening balance = seeded ending balance − net effect of the original seeded payments; corrections never change opening balances | done |
 | 422 | S3-RV-05 | New accounts open at zero | done |
 | 423 | S3-RV-06 | Seeded history is promised consistent and nonnegative (no extra validation required) | n/a (promise about fixtures, no behaviour required) |
-| 424 | S3-CR-01 | `POST /payments/{payment_id}/corrections` requires an `Idempotency-Key` (eighth idempotent write path; §7 rules apply) | todo |
-| 425 | S3-CR-02 | Only the original sender may correct; an authenticated non-sender → 403 `forbidden` | todo |
-| 426 | S3-CR-03 | Unknown payment → 404 `not_found` | todo |
-| 427 | S3-CR-04 | Body fields `expected_revision`, `amount`, `effective_at`, `reason` all required; missing → 422 `validation_failed` | todo |
-| 428 | S3-CR-05 | `expected_revision` positive integer, else 422 `validation_failed` | todo |
-| 429 | S3-CR-06 | `amount` integer 0..1000000000 (0 reverses the whole payment), else 422 `validation_failed` | todo |
-| 430 | S3-CR-07 | `reason` string of 1..200 characters, else 422 `validation_failed` | todo |
-| 431 | S3-CR-08 | `effective_at` RFC 3339 instant with offset, not later than now, else 422 `validation_failed` | todo |
-| 432 | S3-CR-09 | A correction changes neither the parties nor the visibility | todo |
-| 433 | S3-CR-10 | Appends an immutable revision; 201 body {`payment_id`, `revision`, `amount`, `effective_at`, `recorded_at` (server-assigned), `reason`} | todo |
-| 434 | S3-CR-11 | `recorded_at` values of one payment strictly increase | todo |
-| 435 | S3-CR-12 | `expected_revision` not equal to the latest revision → 409 `stale_revision` | todo |
-| 436 | S3-CR-13 | Successful replay returns that original revision with 200, even after newer revisions | todo |
-| 437 | S3-CR-14 | Same key with a different body → 409 `idempotency_key_reuse` | todo |
-| 438 | S3-CR-15 | The amount difference moves between the same two wallets in one atomic step: increase debits the original sender, decrease debits the original receiver | todo |
-| 439 | S3-CR-16 | A currently unaffordable debit (against available) → 409 `insufficient_funds`; this takes precedence over historical checks | todo |
-| 440 | S3-CR-17 | Otherwise, any user's corrected total or available negative at any effective-time/event boundary → 409 `historical_overdraft` | todo |
-| 441 | S3-CR-18 | Boundary balances include the combined effect of all movements at that instant | todo |
-| 442 | S3-CR-19 | Either failure preserves balances, revision history, statements and idempotency state (no key claimed) | todo |
-| 443 | S3-CR-20 | The sum of balances equals the seeded total in every historical view | todo |
-| 444 | S3-CR-21 | The original payment and every original idempotent response remain unchanged | todo |
-| 445 | S3-CR-22 | Settlement members → 422 `linked_payment_immutable` | todo |
-| 446 | S3-CR-23 | Captures → 422 `linked_payment_immutable` | todo |
-| 447 | S3-CR-24 | Check order: 401 → key header → body object → claimed key → 404 → 403 → field validation → 422 linked → 409 stale → 409 insufficient_funds → 409 historical_overdraft | todo |
+| 424 | S3-CR-01 | `POST /payments/{payment_id}/corrections` requires an `Idempotency-Key` (eighth idempotent write path; §7 rules apply) | done |
+| 425 | S3-CR-02 | Only the original sender may correct; an authenticated non-sender → 403 `forbidden` | done |
+| 426 | S3-CR-03 | Unknown payment → 404 `not_found` | done |
+| 427 | S3-CR-04 | Body fields `expected_revision`, `amount`, `effective_at`, `reason` all required; missing → 422 `validation_failed` | done |
+| 428 | S3-CR-05 | `expected_revision` positive integer, else 422 `validation_failed` | done |
+| 429 | S3-CR-06 | `amount` integer 0..1000000000 (0 reverses the whole payment), else 422 `validation_failed` | done |
+| 430 | S3-CR-07 | `reason` string of 1..200 characters, else 422 `validation_failed` | done |
+| 431 | S3-CR-08 | `effective_at` RFC 3339 instant with offset, not later than now, else 422 `validation_failed` | done |
+| 432 | S3-CR-09 | A correction changes neither the parties nor the visibility | done |
+| 433 | S3-CR-10 | Appends an immutable revision; 201 body {`payment_id`, `revision`, `amount`, `effective_at`, `recorded_at` (server-assigned), `reason`} | done |
+| 434 | S3-CR-11 | `recorded_at` values of one payment strictly increase | done |
+| 435 | S3-CR-12 | `expected_revision` not equal to the latest revision → 409 `stale_revision` | done |
+| 436 | S3-CR-13 | Successful replay returns that original revision with 200, even after newer revisions | done |
+| 437 | S3-CR-14 | Same key with a different body → 409 `idempotency_key_reuse` | done |
+| 438 | S3-CR-15 | The amount difference moves between the same two wallets in one atomic step: increase debits the original sender, decrease debits the original receiver | done |
+| 439 | S3-CR-16 | A currently unaffordable debit (against available) → 409 `insufficient_funds`; this takes precedence over historical checks | done |
+| 440 | S3-CR-17 | Otherwise, any user's corrected total or available negative at any effective-time/event boundary → 409 `historical_overdraft` | done |
+| 441 | S3-CR-18 | Boundary balances include the combined effect of all movements at that instant | done |
+| 442 | S3-CR-19 | Either failure preserves balances, revision history, statements and idempotency state (no key claimed) | done |
+| 443 | S3-CR-20 | The sum of balances equals the seeded total in every historical view | done |
+| 444 | S3-CR-21 | The original payment and every original idempotent response remain unchanged | done |
+| 445 | S3-CR-22 | Settlement members → 422 `linked_payment_immutable` | done |
+| 446 | S3-CR-23 | Captures → 422 `linked_payment_immutable` | done |
+| 447 | S3-CR-24 | Check order: 401 → key header → body object → claimed key → 404 → 403 → field validation → 422 linked → 409 stale → 409 insufficient_funds → 409 historical_overdraft | done |
 | 448 | S3-RL-01 | `GET /payments/{payment_id}/revisions` → `{"revisions": [...]}` in revision order, including revision 1 with `reason: ""` | done |
 | 449 | S3-RL-02 | Each revision has `payment_id`, `revision`, `amount`, `effective_at`, `recorded_at`, `reason` | done |
 | 450 | S3-RL-03 | Only the two parties may read it; a third party → 404 even for a public payment; unknown → 404 | done |
@@ -468,8 +468,8 @@ revisions (each with `effective_at` and `recorded_at`) and authorization lifecyc
 | 456 | S3-KA-05 | `known_at` (and `as_of`) may be in the future | done |
 | 457 | S3-KA-06 | A supplied `known_at` is echoed exactly | done |
 | 458 | S3-KA-07 | Statement entries carry the selected `revision`, `effective_at`, `recorded_at`; `payment.amount` is the selected amount | done |
-| 459 | S3-KA-08 | Zero-amount revisions still appear as entries with zero delta | todo |
-| 460 | S3-KA-09 | A correction is never counted alongside the revision it replaces | todo |
+| 459 | S3-KA-08 | Zero-amount revisions still appear as entries with zero delta | done |
+| 460 | S3-KA-09 | A correction is never counted alongside the revision it replaces | done |
 | 461 | S3-KA-10 | With no corrections and no `known_at`, earlier behaviour is unchanged | done |
 | 462 | S3-SN-01 | Every first `GET /statement` response returns an opaque `snapshot` token | done |
 | 463 | S3-SN-02 | The snapshot freezes the caller's selected revisions, window, balances, entries and default `to` | done |
@@ -479,8 +479,8 @@ revisions (each with `effective_at` and `recorded_at`) and authorization lifecyc
 | 467 | S3-SN-06 | Tokens last until reset; surviving a container restart is not required | done |
 | 468 | S3-SN-07 | Snapshot paging changes neither balances nor entries; final partial page and offsets beyond the end report `has_more` correctly | done |
 | 469 | S3-SN-08 | Unrecognized query parameters stay ignored | done |
-| 470 | S3-SN-09 | A correction may move a payment into or out of a statement window | todo |
-| 471 | S3-SN-10 | Concurrent corrections with the same `expected_revision` cannot both succeed | todo |
+| 470 | S3-SN-09 | A correction may move a payment into or out of a statement window | done |
+| 471 | S3-SN-10 | Concurrent corrections with the same `expected_revision` cannot both succeed | done |
 | 472 | S3-SE-01 | Settlements keep their original receipts and privacy rules | done |
 | 473 | S3-SE-02 | Each settlement member's revision 1 uses the shared `committed_at` as both `effective_at` and `recorded_at` | done |
 | 474 | S3-SE-03 | A stage-3 service accepts exports from our stage-1 and stage-2 services | done |
@@ -496,11 +496,11 @@ revisions (each with `effective_at` and `recorded_at`) and authorization lifecyc
 | 484 | S3-HH-09 | Without `as_of`, the view is at the instant the request began | done |
 | 485 | S3-HH-10 | Authorizations expose `closed_at`: null while open, the event time once closed | done |
 | 486 | S3-HH-11 | Historical `total` follows the effective/recorded-time rules | done |
-| 487 | S3-HH-12 | A correction making total or available negative at any past effective/event boundary, under the latest known revisions → 409 `historical_overdraft` | todo |
+| 487 | S3-HH-12 | A correction making total or available negative at any past effective/event boundary, under the latest known revisions → 409 `historical_overdraft` | done |
 | 488 | S3-HH-13 | Seeded open holds are assumed created at reset unless `created_at` is supplied; seeded closed holds need not reconstruct a lifecycle | done |
 | 489 | S3-HH-14 | `GET /statement` contains money movements only: authorization, release and expiry are not entries | done |
 | 490 | S3-HH-15 | Captures appear exactly once in statements, with their links (`authorization_id`) | done |
-| 491 | S3-HH-16 | Old snapshots stay unchanged after any lifecycle action or correction | todo |
+| 491 | S3-HH-16 | Old snapshots stay unchanged after any lifecycle action or correction | done |
 | 492 | S3-EX-01 | Export/import carry revision histories, hold lifecycle events and statement snapshots; format_version stays 1 | done |
 | 493 | S3-EX-02 | Importing a stage-1/stage-2 export synthesizes revision 1 (effective = recorded = created_at) and hold history; tokens, receipts and retries stay valid | done |
 | 494 | S3-PF-01 | Statements, `/me` history and correction checks over ~10^4 payments finish well within the 5 s request budget | done |

@@ -194,7 +194,7 @@ func oracleRun(t *testing.T, seed int64) {
 	for _, p := range omitted {
 		r := wantStatus(t, do(t, srv, "GET", "/payments/"+p.id+"/revisions", tok[p.from], ""), 200)
 		p.at = parseNs(r.body["revisions"].([]any)[0].(map[string]any)["effective_at"].(string))
-		if p.at < resetStart {
+		if p.at < resetStart-int64(time.Second) { // reset time, whole seconds
 			t.Fatalf("reset time %d before reset began %d", p.at, resetStart)
 		}
 		m.payments = append(m.payments, p)
