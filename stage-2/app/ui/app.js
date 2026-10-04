@@ -13,6 +13,10 @@
 'use strict';
 
 const TOKEN_KEY = 'pocketful.token';
+const NOTICE_KEY = 'pocketful.notice';
+// A request with no answer after this long is treated as an unknown outcome ("uncertain").
+const CLIENT_TIMEOUT_MS = 8000;
+const PAGE = 50; // list items shown per "Show more" step
 let token = localStorage.getItem(TOKEN_KEY);
 let me = null; // GET /me body
 
@@ -124,14 +128,14 @@ async function api(method, path, opts = {}) {
   if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
   if (opts.key) headers['Idempotency-Key'] = opts.key;
   const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), 15000);
+  const timer = setTimeout(() => ctl.abort(), CLIENT_TIMEOUT_MS);
   try {
     const res = await fetch(path, { method, headers, body: opts.body, signal: ctl.signal, cache: 'no-store', credentials: 'same-origin' });
     let data = null;
     try { data = await res.json(); } catch (_) { /* empty body */ }
     if (res.status >= 500) return { uncertain: true, status: res.status };
     const code = data && data.error ? data.error.code : null;
-    if (res.status === 401 && token && opts.auth !== false) { signOut(); }
+    if (res.status === 401 && token && opts.auth !== false) { signOut('Your session has ended. Please log in again.'); }
     return { status: res.status, ok: res.status < 300, data, code };
   } catch (_) {
     return { uncertain: true };
@@ -145,14 +149,57 @@ function identity() {
   let cur = { sig: null, key: null };
   return {
     keyFor(sig) { if (sig !== cur.sig) cur = { sig, key: newKey() }; return cur.key; },
+    // a definite refusal (4xx): the next submit starts a new identity
+    reset() { cur = { sig: null, key: null }; },
   };
 }
 
-function signOut() {
+function signOut(notice) {
   localStorage.removeItem(TOKEN_KEY);
   token = null;
+  if (typeof notice === 'string') sessionStorage.setItem(NOTICE_KEY, notice);
   location.assign('/login');
 }
+
+// A stage-1 service (before an upgrade) has no holds: total = balance, nothing held.
+function normalizeMe(m) {
+  const total = m.total !== undefined ? m.total : m.balance;
+  return Object.assign({}, m, { total, held: m.held || 0, available: m.available !== undefined ? m.available : total });
+}
+
+// Reads up to `want` items of a paged list (limit 200 per call), newest first.
+async function fetchList(path, field, want) {
+  const items = [];
+  let more = true;
+  while (items.length < want && more) {
+    const sep = path.includes('?') ? '&' : '?';
+    const r = await api('GET', `${path}${sep}limit=${Math.min(200, want - items.length)}&offset=${items.length}`);
+    if (r.uncertain || !r.ok) return r;
+    items.push(...r.data[field]);
+    more = r.data.has_more;
+  }
+  return { ok: true, status: 200, data: { [field]: items, has_more: more } };
+}
+
+// "Couldn't refresh" note: keeps the last numbers on screen and offers a retry.
+function refreshNote(slot, res, retry) {
+  if (res === 'failed') {
+    slot.replaceChildren(h('div', { class: 'msg msg-uncertain', role: 'status', 'data-testid': 'refresh-error' },
+      h('span', { class: 'icon', 'aria-hidden': 'true' }, '!'),
+      h('div', {}, h('strong', {}, 'Couldn’t refresh.'), ' Showing the last numbers we had. ',
+        h('button', { type: 'button', class: 'linklike', onclick: retry }, 'Try again'))));
+  } else if (res === 'ok') {
+    slot.replaceChildren();
+  }
+}
+
+function showMore(testid, onclick) {
+  return h('div', { class: 'more' }, h('button', { type: 'button', class: 'btn btn-secondary', 'data-testid': testid, onclick }, 'Show more'));
+}
+
+const UNCERTAIN = {
+  pay: 'We couldn’t confirm whether this payment went through. Retrying is safe — it will only be applied once.',
+};
 
 // ---------------------------------------------------------------- messages
 
@@ -200,6 +247,8 @@ function busy(btn, on, label) {
     btn.removeAttribute('aria-busy');
     btn.disabled = false;
     btn.textContent = btn.dataset.label || btn.textContent;
+    // a disabled button loses focus; give it back so keyboard users stay in place
+    if (!document.activeElement || document.activeElement === document.body) btn.focus({ preventScroll: true });
   }
 }
 
@@ -273,11 +322,11 @@ let readSeq = 0, appliedSeq = 0;
 // Fetches /me plus the given extra reads; applies them only if no newer read was applied.
 async function refresh(extra, apply) {
   const seq = ++readSeq;
-  const [m, ...rest] = await Promise.all([api('GET', '/me'), ...extra.map((p) => api('GET', p))]);
+  const [m, ...rest] = await Promise.all([api('GET', '/me'), ...extra.map((p) => (typeof p === 'function' ? p() : api('GET', p)))]);
   if (seq <= appliedSeq) return 'stale';
   if (m.uncertain || !m.ok || rest.some((r) => r.uncertain || !r.ok)) return 'failed';
   appliedSeq = seq;
-  me = m.data;
+  me = normalizeMe(m.data);
   apply(rest.map((r) => r.data));
   return 'ok';
 }
@@ -298,7 +347,7 @@ function renderHeader() {
         h('span', { class: 'who-name', 'data-testid': 'current-user', title: me.display_name }, me.display_name || me.handle),
         h('span', { class: 'who-handle', 'data-testid': 'current-handle' }, me.handle)),
       h('button', { class: 'btn btn-quiet', type: 'button', 'data-testid': 'logout-button', onclick: signOut }, 'Log out')));
-  } else {
+  } else if (!token) {
     bar.append(h('div', { class: 'who' },
       h('a', { class: 'btn btn-quiet', href: '/login' }, 'Log in'),
       h('a', { class: 'btn btn-primary', href: '/signup' }, 'Create account')));
@@ -367,12 +416,14 @@ function payForm(onDone) {
     const r = await api('POST', '/payments', { body, key });
     busy(submit, false);
     if (r.uncertain) {
-      say(status, 'pay', 'uncertain', 'We couldn’t confirm this payment.',
-        ' It may or may not have gone through. Press “Send money” again to check — the same payment will never be sent twice.');
+      // unknown outcome: keep the identity; pressing "Send money" again with the unchanged
+      // form re-sends the same key and body. If a field is changed, this note stays until
+      // the next submit, which then starts a new payment.
+      say(status, 'pay', 'uncertain', 'Not confirmed yet.', ' ' + UNCERTAIN.pay);
       return;
     }
-    if (r.ok) say(status, 'pay', 'success', `Sent ${fmt(r.data.amount)} to ${r.data.to_handle}.`, r.status === 200 ? ' This payment was already sent; nothing more was taken.' : null);
-    else say(status, 'pay', 'error', 'Payment not sent.', ' ' + messageFor(r), r.code);
+    if (r.ok) say(status, 'pay', 'success', `Sent ${fmt(r.data.amount)} to ${r.data.to_handle}.`, r.status === 200 ? ' Confirmed — this payment was made once; nothing more was taken.' : null);
+    else { ident.reset(); say(status, 'pay', 'error', 'Payment not sent.', ' ' + messageFor(r), r.code); }
     onDone();
   });
   return form;
@@ -397,9 +448,9 @@ function requestForm(onDone) {
     busy(submit, true, 'Sending…');
     const r = await api('POST', '/requests', { body, key: ident.keyFor(body) });
     busy(submit, false);
-    if (r.uncertain) return say(status, 'request', 'uncertain', 'We couldn’t confirm this request.', ' Press “Request money” again to check — it won’t be sent twice.');
+    if (r.uncertain) return say(status, 'request', 'uncertain', 'Not confirmed yet.', ' We couldn’t confirm whether this request was sent. Retrying is safe — it will only be sent once.');
     if (r.ok) say(status, 'request', 'success', `Asked ${r.data.payer_handle} for ${fmt(r.data.amount)}.`, null);
-    else say(status, 'request', 'error', 'Request not sent.', ' ' + messageFor(r, { not_found: 'We couldn’t find anyone with that handle.' }), r.code);
+    else { ident.reset(); say(status, 'request', 'error', 'Request not sent.', ' ' + messageFor(r, { not_found: 'We couldn’t find anyone with that handle.' }), r.code); }
     onDone();
   });
   return form;
@@ -411,29 +462,40 @@ async function walletPage(main) {
   const refreshBtn = h('button', { class: 'btn btn-on-dark', type: 'button', 'data-testid': 'wallet-refresh' }, 'Refresh');
   const feed = h('div', { 'aria-live': 'polite' }, h('div', { class: 'loading-block' }, h('span', { class: 'spinner', 'aria-hidden': 'true' }), 'Loading activity…'));
   const feedStatus = h('div', {});
+  let shown = PAGE;
 
   const apply = ([activity]) => {
     numbers.replaceChildren(walletNumbers(true));
     renderFeed(feed, activity.payments);
+    if (activity.has_more) feed.append(showMore('activity-more', () => { shown += PAGE; reload(); }));
     stamp.textContent = 'Updated ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   };
   const reload = async () => {
-    const res = await refresh(['/activity?limit=100'], apply);
-    if (res === 'failed') say(feedStatus, 'refresh', 'error', 'Couldn’t refresh.', ' Check your connection and try again.');
-    else if (res === 'ok') say(feedStatus, 'refresh', null);
+    const res = await refresh([() => fetchList('/activity', 'payments', shown)], apply);
+    refreshNote(feedStatus, res, reload);
   };
-  refreshBtn.addEventListener('click', async () => { busy(refreshBtn, true, 'Refreshing…'); await reload(); busy(refreshBtn, false); });
+  // The refresh button stays enabled while a read is in flight: a second press issues a
+  // newer read, and refresh() makes sure an older answer arriving later is ignored.
+  let inflight = 0;
+  refreshBtn.addEventListener('click', async () => {
+    inflight++;
+    refreshBtn.setAttribute('aria-busy', 'true');
+    refreshBtn.replaceChildren(h('span', { class: 'spinner', 'aria-hidden': 'true' }), 'Refreshing…');
+    try { await reload(); } finally {
+      if (--inflight === 0) { refreshBtn.removeAttribute('aria-busy'); refreshBtn.textContent = 'Refresh'; }
+    }
+  });
 
   numbers.append(walletNumbers(true));
   main.replaceChildren(
     h('div', { class: 'page-head' }, h('div', {}, h('h1', {}, `Hi, ${me.display_name || me.handle}`), h('p', {}, 'Send, request and keep track of your money.'))),
     h('div', { class: 'grid wallet' },
       h('div', { class: 'stack' },
-        h('section', { class: 'card balance-card', 'aria-label': 'Balance' }, numbers, h('div', { class: 'balance-actions' }, refreshBtn, stamp)),
+        h('section', { class: 'card balance-card', 'aria-label': 'Balance' }, numbers, h('div', { class: 'balance-actions' }, refreshBtn, stamp), feedStatus),
         h('section', { class: 'card', 'aria-labelledby': 'pay-title' }, h('div', { class: 'card-head' }, h('h2', { id: 'pay-title' }, 'Send money')), payForm(reload)),
         h('section', { class: 'card', 'aria-labelledby': 'req-title' }, h('div', { class: 'card-head' }, h('h2', { id: 'req-title' }, 'Request money'), h('a', { href: '/requests', class: 'small' }, 'View requests')), requestForm(reload))),
       h('section', { class: 'card', 'aria-labelledby': 'act-title' },
-        h('div', { class: 'card-head' }, h('h2', { id: 'act-title' }, 'Activity'), h('p', {}, 'Newest first')), feedStatus, feed)));
+        h('div', { class: 'card-head' }, h('h2', { id: 'act-title' }, 'Activity'), h('p', {}, 'Newest first')), feed)));
   await reload();
 }
 
@@ -441,12 +503,17 @@ async function walletPage(main) {
 
 async function requestsPage(main) {
   const summary = h('div', {});
-  const alertSlot = h('div', { 'aria-live': 'polite' });
+  const alertSlot = h('div', { 'aria-live': 'polite', class: 'page-alert' });
   const incoming = h('ul', { class: 'list', 'data-testid': 'incoming-list', 'aria-label': 'Requests to you' });
   const outgoing = h('ul', { class: 'list', 'data-testid': 'outgoing-list', 'aria-label': 'Requests you sent' });
   const emptySlot = h('div', {});
   const listsGrid = h('div', { class: 'grid two' });
+  const refreshSlot = h('div', { class: 'page-alert' });
+  const moreSlot = h('div', {});
   const payIdent = {};
+  const visChosen = {};
+  let latest = {};
+  let shown = PAGE;
 
   const item = (r, isIncoming) => {
     const pending = r.status === 'pending';
@@ -454,6 +521,8 @@ async function requestsPage(main) {
     if (pending && isIncoming) {
       const vis = h('select', { 'aria-label': `Visibility of the payment to ${r.requester_handle}`, 'data-testid': `request-visibility-${r.request_id}` },
         h('option', { value: 'public' }, 'Public'), h('option', { value: 'private' }, 'Private'));
+      vis.value = visChosen[r.request_id] || 'public';
+      vis.addEventListener('change', () => { visChosen[r.request_id] = vis.value; });
       const pay = h('button', { class: 'btn btn-primary', type: 'button', 'data-testid': `request-pay-${r.request_id}` }, `Pay ${fmt(r.amount)}`);
       const decline = h('button', { class: 'btn btn-secondary', type: 'button', 'data-testid': `request-decline-${r.request_id}` }, 'Decline');
       pay.addEventListener('click', async () => {
@@ -462,7 +531,9 @@ async function requestsPage(main) {
         busy(pay, true, 'Paying…');
         const res = await api('POST', `/requests/${encodeURIComponent(r.request_id)}/pay`, { body, key: payIdent[r.request_id].keyFor(body) });
         busy(pay, false);
-        after(res, `Paid ${fmt(r.amount)} to ${r.requester_handle}.`, 'Payment not sent.');
+        if (!res.uncertain && !res.ok) delete payIdent[r.request_id]; // refused: next try is a new attempt
+        after(res, `Paid ${fmt(r.amount)} to ${r.requester_handle}.`, 'Payment not sent.',
+          () => latest[r.request_id] && latest[r.request_id].status === 'paid');
       });
       decline.addEventListener('click', async () => {
         busy(decline, true, 'Declining…');
@@ -496,6 +567,7 @@ async function requestsPage(main) {
   const apply = ([list]) => {
     summary.replaceChildren(walletNumbers(false));
     const mine = list.requests;
+    latest = Object.fromEntries(mine.map((r) => [r.request_id, r]));
     const inc = mine.filter((r) => r.payer_id === me.user_id), out = mine.filter((r) => r.requester_id === me.user_id);
     incoming.replaceChildren(...inc.map((r) => item(r, true)));
     outgoing.replaceChildren(...out.map((r) => item(r, false)));
@@ -507,19 +579,26 @@ async function requestsPage(main) {
       'When you ask someone for money, or someone asks you, it shows up here.',
       h('a', { class: 'btn btn-primary', href: '/' }, 'Request money'))) : '');
     listsGrid.hidden = !mine.length;
+    moreSlot.replaceChildren(list.has_more ? showMore('requests-more', () => { shown += PAGE; reload(); }) : '');
   };
-  const reload = () => refresh(['/requests?limit=200'], apply);
-  async function after(res, okText, refusedTitle) {
-    if (res.uncertain) say(alertSlot, 'request', 'uncertain', 'We couldn’t confirm that.', ' Try again — a payment will never be sent twice.');
+  const reload = async () => {
+    const res = await refresh([() => fetchList('/requests', 'requests', shown)], apply);
+    refreshNote(refreshSlot, res, reload);
+  };
+  // `confirmed()` checks the refreshed list: an unknown outcome that the server shows as
+  // done is reported as done; otherwise the action stays retryable with the same key.
+  async function after(res, okText, refusedTitle, confirmed) {
+    if (res.uncertain) say(alertSlot, 'request', 'uncertain', 'Not confirmed yet.', ' We couldn’t confirm whether that went through. Retrying is safe — a payment is only ever made once.');
     else if (res.ok) say(alertSlot, 'request', 'success', okText, null);
     else say(alertSlot, 'request', 'error', refusedTitle, ' ' + messageFor(res, { not_found: 'This request no longer exists.' }), res.code);
     await reload();
+    if (res.uncertain && confirmed && confirmed()) say(alertSlot, 'request', 'success', okText, ' Confirmed after reconnecting.');
   }
 
   summary.append(walletNumbers(false));
   main.replaceChildren(
     h('div', { class: 'page-head' }, h('div', {}, h('h1', {}, 'Requests'), h('p', {}, 'Money people have asked you for, and money you’ve asked for.'))),
-    summary, alertSlot, emptySlot, listsGrid);
+    summary, refreshSlot, alertSlot, emptySlot, listsGrid, moreSlot);
   listsGrid.append(
       h('section', { class: 'card', 'aria-labelledby': 'in-title' }, h('div', { class: 'card-head' }, h('h2', { id: 'in-title' }, 'To pay'), h('p', {}, 'Requests to you')), incoming),
       h('section', { class: 'card', 'aria-labelledby': 'out-title' }, h('div', { class: 'card-head' }, h('h2', { id: 'out-title' }, 'Asked by you'), h('p', {}, 'Requests you sent')), outgoing));
@@ -572,8 +651,9 @@ function splitPage(main) {
     busy(submit, true, 'Splitting…');
     const r = await api('POST', '/splits', { body, key: ident.keyFor(body) });
     busy(submit, false);
-    if (r.uncertain) return say(status, 'split', 'uncertain', 'We couldn’t confirm this split.', ' Press the button again to check — requests won’t be duplicated.');
+    if (r.uncertain) return say(status, 'split', 'uncertain', 'Not confirmed yet.', ' We couldn’t confirm whether this split was created. Retrying is safe — requests are only sent once.');
     if (!r.ok) {
+      ident.reset();
       return say(status, 'split', 'error', 'Split not created.', ' ' + messageFor(r, {
         not_found: 'One of those handles doesn’t belong to anyone.',
         validation_failed: 'Each person can appear only once, and the amount must be valid.' }), r.code);
@@ -597,9 +677,14 @@ async function authorizationsPage(main) {
   const ident = identity();
   const capIdent = {};
   const summary = h('div', {});
-  const alertSlot = h('div', { 'aria-live': 'polite' });
+  const alertSlot = h('div', { 'aria-live': 'polite', class: 'page-alert' });
   const list = h('ul', { class: 'list', 'data-testid': 'authorization-list', 'aria-label': 'Holds, newest first' });
   const emptySlot = h('div', {});
+  const refreshSlot = h('div', { class: 'page-alert' });
+  const moreSlot = h('div', {});
+  let shown = PAGE;
+  let latest = {};
+  const capTyped = {};
   const status = h('div', { 'aria-live': 'polite' });
   const submit = h('button', { class: 'btn btn-primary btn-block', type: 'submit', 'data-testid': 'authorize-submit' }, 'Place hold');
 
@@ -614,7 +699,10 @@ async function authorizationsPage(main) {
     const open = a.status === 'open';
     const actions = [];
     if (open && !outgoing) {
-      const amountIn = h('input', { type: 'text', inputmode: 'decimal', 'data-testid': `authorization-capture-amount-${a.authorization_id}`, id: `cap-${a.authorization_id}`, value: toDecimal(a.remaining_amount) });
+      // a typed amount survives list refreshes, so a retry re-sends the same body
+      const typed = capTyped[a.authorization_id];
+      const amountIn = h('input', { type: 'text', inputmode: 'decimal', 'data-testid': `authorization-capture-amount-${a.authorization_id}`, id: `cap-${a.authorization_id}`,
+        value: typed !== undefined ? typed : toDecimal(a.remaining_amount), oninput: (e) => { capTyped[a.authorization_id] = e.target.value; } });
       const capture = h('button', { class: 'btn btn-primary', type: 'button', 'data-testid': `authorization-capture-${a.authorization_id}` }, 'Collect');
       capture.addEventListener('click', async () => {
         const amt = parseAmount(amountIn.value);
@@ -624,7 +712,9 @@ async function authorizationsPage(main) {
         busy(capture, true, 'Collecting…');
         const r = await api('POST', `/authorizations/${encodeURIComponent(a.authorization_id)}/capture`, { body, key: capIdent[a.authorization_id].keyFor(body) });
         busy(capture, false);
-        after(r, `Collected ${fmt(amt.minor)} from ${a.from_handle}.`, 'Couldn’t collect.');
+        if (!r.uncertain && !r.ok) delete capIdent[a.authorization_id];
+        after(r, `Collected ${fmt(amt.minor)} from ${a.from_handle}.`, 'Couldn’t collect.',
+          () => latest[a.authorization_id] && latest[a.authorization_id].captured_amount >= a.captured_amount + amt.minor);
       });
       actions.push(h('label', { class: 'visually-hidden', for: `cap-${a.authorization_id}` }, `Amount to collect from ${a.from_handle}`), amountIn, capture);
     }
@@ -657,16 +747,22 @@ async function authorizationsPage(main) {
 
   const apply = ([data]) => {
     summary.replaceChildren(walletNumbers(false));
+    latest = Object.fromEntries(data.authorizations.map((a) => [a.authorization_id, a]));
     list.replaceChildren(...data.authorizations.map(item));
     emptySlot.replaceChildren(!data.authorizations.length ? emptyState('empty-authorizations', 'No holds',
       'A hold reserves money for someone to collect later. It stays yours until they collect it, and is released if it expires.') : '');
+    moreSlot.replaceChildren(data.has_more ? showMore('authorizations-more', () => { shown += PAGE; reload(); }) : '');
   };
-  const reload = () => refresh(['/authorizations?limit=200'], apply);
-  async function after(r, okText, refusedTitle) {
-    if (r.uncertain) say(alertSlot, 'authorization', 'uncertain', 'We couldn’t confirm that.', ' Try again — nothing will be collected twice.');
+  const reload = async () => {
+    const res = await refresh([() => fetchList('/authorizations', 'authorizations', shown)], apply);
+    refreshNote(refreshSlot, res, reload);
+  };
+  async function after(r, okText, refusedTitle, confirmed) {
+    if (r.uncertain) say(alertSlot, 'authorization', 'uncertain', 'Not confirmed yet.', ' We couldn’t confirm whether that went through. Retrying is safe — nothing is collected twice.');
     else if (r.ok) say(alertSlot, 'authorization', 'success', okText, null);
     else say(alertSlot, 'authorization', 'error', refusedTitle, ' ' + messageFor(r), r.code);
     await reload();
+    if (r.uncertain && confirmed && confirmed()) say(alertSlot, 'authorization', 'success', okText, ' Confirmed after reconnecting.');
   }
 
   form.addEventListener('submit', async (ev) => {
@@ -680,19 +776,19 @@ async function authorizationsPage(main) {
     busy(submit, true, 'Placing hold…');
     const r = await api('POST', '/authorizations', { body, key: ident.keyFor(body) });
     busy(submit, false);
-    if (r.uncertain) say(status, 'authorize', 'uncertain', 'We couldn’t confirm this hold.', ' Press “Place hold” again to check — it won’t be placed twice.');
+    if (r.uncertain) say(status, 'authorize', 'uncertain', 'Not confirmed yet.', ' We couldn’t confirm whether this hold was placed. Retrying is safe — it will only be placed once.');
     else if (r.ok) say(status, 'authorize', 'success', `${fmt(r.data.amount)} is on hold for ${r.data.to_handle}.`, ` It expires ${new Date(r.data.expires_at).toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}.`);
-    else say(status, 'authorize', 'error', 'Hold not placed.', ' ' + messageFor(r, { insufficient_funds: 'Not enough available funds for this hold.' }), r.code);
+    else { ident.reset(); say(status, 'authorize', 'error', 'Hold not placed.', ' ' + messageFor(r, { insufficient_funds: 'Not enough available funds for this hold.' }), r.code); }
     await reload();
   });
 
   summary.append(walletNumbers(false));
   main.replaceChildren(
     h('div', { class: 'page-head' }, h('div', {}, h('h1', {}, 'Holds'), h('p', {}, 'Reserve money now; the other person collects it later.'))),
-    summary, alertSlot,
+    summary, refreshSlot, alertSlot,
     h('div', { class: 'grid side' },
       h('section', { class: 'card', 'aria-labelledby': 'hold-title' }, h('div', { class: 'card-head' }, h('h2', { id: 'hold-title' }, 'Place a hold')), form),
-      h('section', { class: 'card', 'aria-labelledby': 'holds-title' }, h('div', { class: 'card-head' }, h('h2', { id: 'holds-title' }, 'Your holds'), h('p', {}, 'Newest first')), emptySlot, list)));
+      h('section', { class: 'card', 'aria-labelledby': 'holds-title' }, h('div', { class: 'card-head' }, h('h2', { id: 'holds-title' }, 'Your holds'), h('p', {}, 'Newest first')), emptySlot, list, moreSlot)));
   await reload();
 }
 
@@ -749,7 +845,11 @@ function authPage(main, mode) {
     localStorage.setItem(TOKEN_KEY, r.data.token);
     location.assign('/');
   });
+  const notice = sessionStorage.getItem(NOTICE_KEY);
+  sessionStorage.removeItem(NOTICE_KEY);
   main.replaceChildren(h('div', { class: 'auth-wrap' }, signedInNote(),
+    notice ? h('div', { class: 'msg msg-uncertain signed-in-note', role: 'status', 'data-testid': 'session-notice' },
+      h('span', { class: 'icon', 'aria-hidden': 'true' }, '!'), h('div', {}, notice)) : null,
     h('section', { class: 'card' },
       h('h1', {}, isLogin ? 'Welcome back' : 'Create your account'),
       h('p', { class: 'lede' }, isLogin ? 'Log in to send and receive money.' : 'Pay friends by handle, split bills and keep track of who owes what.'),
@@ -769,12 +869,12 @@ async function boot() {
   if (!token && !isAuthPage) { location.replace('/login'); return; }
   if (token) {
     const r = await api('GET', '/me', { auth: false });
-    if (r.ok) me = r.data;
+    if (r.ok) me = normalizeMe(r.data);
     else if (r.status === 401) { localStorage.removeItem(TOKEN_KEY); token = null; if (!isAuthPage) { location.replace('/login'); return; } }
     else if (!isAuthPage) {
       renderHeader();
       main.removeAttribute('aria-busy');
-      main.replaceChildren(h('div', { class: 'card' }, h('h1', {}, 'We couldn’t load your wallet'),
+      main.replaceChildren(h('div', { class: 'card', role: 'alert', 'data-testid': 'load-error' }, h('h1', {}, 'We couldn’t load your wallet'),
         h('p', { class: 'muted', style: 'margin:8px 0 16px' }, 'Check your connection and try again.'),
         h('button', { class: 'btn btn-primary', type: 'button', onclick: () => location.reload() }, 'Try again')));
       return;

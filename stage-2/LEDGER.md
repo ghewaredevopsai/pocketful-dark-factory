@@ -288,21 +288,21 @@ at or before the clock, so reads and writes always see the expired state.
 | 276 | S2-RF-01 | After any successful action, balance, feed and request lists on the same page show the new state without manual reload | done |
 | 277 | S2-RF-02 | Refresh after a write waits for the write to succeed | done |
 | 278 | S2-RF-03 | No live-update/polling requirement (only own actions and explicit refresh) | n/a (no requirement: stated as not required) |
-| 279 | S2-CC-01 | `wallet-refresh` button on `/` refreshes balance and feed without clearing the pay form | todo |
-| 280 | S2-CC-02 | Latest refresh wins: an earlier read arriving late never overwrites a later refresh (out-of-order responses) | todo |
-| 281 | S2-CC-03 | Refused payment shows `pay-error`, refreshes balance and feed, and preserves all pay inputs | todo |
-| 282 | S2-CC-04 | Request cancelled elsewhere: refused pay shows `request-error` and refreshes the list so the stale pay button disappears | todo |
-| 283 | S2-CC-05 | Lost payment response (incl. after commit) shows `pay-uncertain` (nonempty text), not `pay-error` | todo |
-| 284 | S2-CC-06 | The unchanged form stays retryable with the same key and body after an uncertain outcome | todo |
-| 285 | S2-CC-07 | Successful retry removes `pay-error` and `pay-uncertain`, refreshes balance and feed, money moves exactly once | todo |
-| 286 | S2-CC-08 | Unknown outcomes are never shown as confirmed rejections | todo |
-| 287 | S2-CC-09 | Refresh rules also apply to available and held amounts | todo |
+| 279 | S2-CC-01 | `wallet-refresh` button on `/` refreshes balance and feed without clearing the pay form | done |
+| 280 | S2-CC-02 | Latest refresh wins: an earlier read arriving late never overwrites a later refresh (out-of-order responses) | done |
+| 281 | S2-CC-03 | Refused payment shows `pay-error`, refreshes balance and feed, and preserves all pay inputs | done |
+| 282 | S2-CC-04 | Request cancelled elsewhere: refused pay shows `request-error` and refreshes the list so the stale pay button disappears | done |
+| 283 | S2-CC-05 | Lost payment response (incl. after commit) shows `pay-uncertain` (nonempty text), not `pay-error` | done |
+| 284 | S2-CC-06 | The unchanged form stays retryable with the same key and body after an uncertain outcome | done |
+| 285 | S2-CC-07 | Successful retry removes `pay-error` and `pay-uncertain`, refreshes balance and feed, money moves exactly once | done |
+| 286 | S2-CC-08 | Unknown outcomes are never shown as confirmed rejections | done |
+| 287 | S2-CC-09 | Refresh rules also apply to available and held amounts | done |
 | 288 | S2-CC-10 | No background polling, live sync or reload recovery required | n/a (no requirement: stated as not required) |
-| 289 | S2-UP-01 | A stage-2 service accepts an export produced by our stage-1 service (`POST /_test/import`) | todo |
-| 290 | S2-UP-02 | A browser signed in before the export/import upgrade stays signed in afterwards | todo |
-| 291 | S2-UP-03 | Pending requests remain payable through the request screen after the upgrade | todo |
-| 292 | S2-UP-04 | A payment whose response was lost before export is retryable after import with the same key and body; the UI recovers the original payment and refreshes the imported balance | todo |
-| 293 | S2-UP-05 | No page reload or new screen needed; the form and pending retry identity survive the upgrade (import between browser requests only) | todo |
+| 289 | S2-UP-01 | A stage-2 service accepts an export produced by our stage-1 service (`POST /_test/import`) | done |
+| 290 | S2-UP-02 | A browser signed in before the export/import upgrade stays signed in afterwards | done |
+| 291 | S2-UP-03 | Pending requests remain payable through the request screen after the upgrade | done |
+| 292 | S2-UP-04 | A payment whose response was lost before export is retryable after import with the same key and body; the UI recovers the original payment and refreshes the imported balance | done |
+| 293 | S2-UP-05 | No page reload or new screen needed; the form and pending retry identity survive the upgrade (import between browser requests only) | done |
 | 294 | S2-AZ-01 | An authorisation can be captured later for the full amount or less | done |
 | 295 | S2-AZ-02 | An authorisation places a hold on the payer: reserves money without moving it | done |
 | 296 | S2-AZ-03 | Capturing moves money; a final capture releases whatever was not captured | done |

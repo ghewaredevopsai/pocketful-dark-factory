@@ -105,8 +105,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 /* ---- balance ---------------------------------------------------------------- */
 .balance-card { background: linear-gradient(160deg, #0b5e55 0%, #0a4f48 100%); color: #fff; border: 0; }
 .balance-card .label { font-size: var(--fs-sm); font-weight: 600; opacity: .92; }
-.balance-hero { font-size: var(--fs-hero); font-weight: 750; letter-spacing: -.02em; line-height: 1.1; margin: var(--s1) 0 var(--s4); }
-@media (max-width: 400px) { .balance-hero { font-size: 2.1rem; } }
+.balance-hero { font-size: clamp(1.6rem, 7.5vw, var(--fs-hero)); font-weight: 750; letter-spacing: -.02em; line-height: 1.15; margin: var(--s1) 0 var(--s4); }
+.balance-hero .money, .summary .money, .balance-meta .money { white-space: normal; overflow-wrap: anywhere; }
 .balance-meta { display: flex; gap: var(--s5); flex-wrap: wrap; margin: 0; }
 .balance-meta div { min-width: 0; }
 .balance-meta dt { font-size: var(--fs-xs); opacity: .9; }
@@ -212,6 +212,10 @@ input[aria-invalid="true"] { border-color: var(--danger); }
 .empty h3 { color: var(--text); margin-bottom: 4px; }
 .empty .btn { margin-top: var(--s4); }
 .empty-card { margin-bottom: var(--s4); }
+.page-alert:not(:empty) { margin-bottom: var(--s4); }
+.page-alert .msg { margin-top: 0; }
+.more { display: flex; justify-content: center; margin-top: var(--s4); }
+.linklike { background: none; border: 0; padding: 0; font: inherit; font-weight: 700; color: inherit; text-decoration: underline; cursor: pointer; min-height: 0; }
 .loading-block { display: flex; gap: 10px; align-items: center; color: var(--text-2); padding: var(--s5) 0; justify-content: center; }
 .skeleton { height: 14px; border-radius: 7px; background: linear-gradient(90deg, #eceff2, #f6f7f9, #eceff2); background-size: 200% 100%; animation: shimmer 1.2s ease-in-out infinite; }
 @keyframes shimmer { to { background-position: -200% 0; } }
@@ -237,4 +241,11 @@ details.tech summary { cursor: pointer; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition: none !important; scroll-behavior: auto !important; }
+}
+
+/* phones: the amount moves under the text so long notes keep a readable width */
+@media (max-width: 480px) {
+  .item { grid-template-columns: 40px minmax(0, 1fr); }
+  .item-amount { grid-column: 2; text-align: left; display: flex; gap: var(--s2); align-items: baseline; flex-wrap: wrap; }
+  .item-amount .dirword { display: inline; }
 }
