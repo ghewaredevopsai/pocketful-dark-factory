@@ -48,7 +48,7 @@ func (s *Server) importState(r *http.Request, _ []string) (int, any, *apiErr) {
 	if e := validateState(st); e != nil {
 		return 0, nil, e
 	}
-	s.mu.Lock()
+	s.lock()
 	s.st = st
 	s.mu.Unlock()
 	return 204, nil, nil
@@ -130,6 +130,28 @@ func validateState(st *State) *apiErr {
 			return bad("invalid idempotency record")
 		}
 	}
+	if st.TTL < 0 || st.TTL > maxTTL {
+		return bad("authorization_ttl_seconds out of range")
+	}
+	ids = map[string]bool{}
+	for _, a := range st.Authorizations {
+		if a == nil || a.ID == "" || ids[a.ID] || !users[a.From] || !users[a.To] || a.Amount < 1 || a.Amount > maxAmount ||
+			a.Captured < 0 || a.Captured > a.Amount || (a.Visibility != "public" && a.Visibility != "private") ||
+			stampNanos(a.ExpiresAt) == 0 || stampNanos(a.CreatedAt) == 0 {
+			return bad("invalid or duplicate authorization")
+		}
+		switch a.Status {
+		case "open", "captured", "voided", "expired":
+		default:
+			return bad("invalid authorization status")
+		}
+		ids[a.ID] = true
+	}
 	st.index()
+	for _, u := range st.Users {
+		if st.held[u.ID] > u.Balance {
+			return bad("open holds exceed a balance")
+		}
+	}
 	return nil
 }

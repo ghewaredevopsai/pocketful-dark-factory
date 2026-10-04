@@ -23,6 +23,9 @@ type State struct {
 	Idem    map[string]*IdemRecord `json:"idempotency"`
 	NextID  int64                  `json:"next_id"`  // counter for generated ids
 	NextSeq int64                  `json:"next_seq"` // insertion order, tie-break for "newest first"
+	// stage 2: holds. TTL 0 (a stage-1 export) means the default 600 s.
+	TTL            int64            `json:"authorization_ttl_seconds"`
+	Authorizations []*Authorization `json:"authorizations"`
 
 	// indexes, rebuilt by index(); never serialized
 	userByID     map[string]*User
@@ -32,6 +35,9 @@ type State struct {
 	settlements  map[string]bool // settlement ids already used by payments
 	paymentByID  map[string]*Payment
 	requestByID  map[string]*Request
+	authByID     map[string]*Authorization
+	open         map[*Authorization]bool // open authorizations, for the expiry sweep
+	held         map[string]int64        // user id -> sum of open holds' remaining amounts
 }
 
 type User struct {
@@ -52,6 +58,7 @@ type Payment struct {
 	Visibility   string  `json:"visibility"`
 	RequestID    *string `json:"request_id"`
 	SettlementID *string `json:"settlement_id"`
+	AuthID       *string `json:"authorization_id"`
 	CreatedAt    string  `json:"created_at"`
 	Seq          int64   `json:"seq"`
 	at           int64   // CreatedAt as unix nanoseconds, for ordering
@@ -95,7 +102,9 @@ const maxAmount = 1_000_000_000
 const maxBalance = int64(1) << 53
 
 // now is the server clock, RFC 3339 with an explicit numeric offset (CV-02).
-func now() string { return time.Now().UTC().Format("2006-01-02T15:04:05-07:00") }
+const stampLayout = "2006-01-02T15:04:05-07:00"
+
+func now() string { return time.Now().UTC().Format(stampLayout) }
 
 func (s *State) index() {
 	s.userByID = map[string]*User{}
@@ -136,6 +145,30 @@ func (s *State) index() {
 	if s.Idem == nil {
 		s.Idem = map[string]*IdemRecord{}
 	}
+	if s.Authorizations == nil {
+		s.Authorizations = []*Authorization{}
+	}
+	if s.TTL == 0 {
+		s.TTL = defaultTTL
+	}
+	s.authByID = map[string]*Authorization{}
+	s.open = map[*Authorization]bool{}
+	s.held = map[string]int64{}
+	for _, a := range s.Authorizations {
+		s.authByID[a.ID] = a
+		a.at = stampNanos(a.CreatedAt)
+		a.exp = stampNanos(a.ExpiresAt)
+		if a.PaymentIDs == nil {
+			a.PaymentIDs = []string{}
+		}
+		if a.Status == "open" {
+			s.open[a] = true
+			s.held[a.From] += a.Amount - a.Captured
+		}
+		if a.Seq > s.NextSeq {
+			s.NextSeq = a.Seq
+		}
+	}
 }
 
 // newID returns a generated id with the given prefix that no existing record uses.
@@ -143,7 +176,8 @@ func (s *State) newID(prefix string) string {
 	for {
 		s.NextID++
 		id := fmt.Sprintf("%s%d", prefix, s.NextID)
-		if s.userByID[id] == nil && s.paymentByID[id] == nil && s.requestByID[id] == nil && !s.settlements[id] {
+		if s.userByID[id] == nil && s.paymentByID[id] == nil && s.requestByID[id] == nil && !s.settlements[id] &&
+			s.authByID[id] == nil {
 			return id
 		}
 	}
@@ -335,6 +369,9 @@ func parseFixture(m map[string]any) (*State, []seedUser, *apiErr) {
 		if p.SettlementID != nil {
 			st.settlements[*p.SettlementID] = true
 		}
+		if p.AuthID, good = optID(o, "authorization_id"); !good {
+			return bad("payments[%d].authorization_id", i)
+		}
 		if p.CreatedAt, good = stamp(o); !good {
 			return bad("payments[%d].created_at", i)
 		}
@@ -384,6 +421,97 @@ func parseFixture(m map[string]any) (*State, []seedUser, *apiErr) {
 		r.at = stampNanos(r.CreatedAt)
 		st.Requests = append(st.Requests, r)
 		st.requestByID[r.ID] = r
+	}
+
+	if v, present := m["authorization_ttl_seconds"]; present {
+		ttl, good := integral(v)
+		if !good || ttl < 1 || ttl > maxTTL {
+			return bad("authorization_ttl_seconds must be a positive integer")
+		}
+		st.TTL = ttl
+	}
+	rawAuth, ok := list("authorizations", false)
+	if !ok {
+		return bad("authorizations must be an array")
+	}
+	auths, ok := objs(rawAuth)
+	if !ok {
+		return bad("every authorization must be an object")
+	}
+	resetAt := time.Now().UnixNano()
+	for i, o := range auths {
+		a := &Authorization{PaymentIDs: []string{}}
+		var good bool
+		if a.ID, good = str(o, "id", true, ""); !good || st.authByID[a.ID] != nil {
+			return bad("authorizations[%d].id missing or duplicate", i)
+		}
+		if a.From, good = str(o, "from_user_id", true, ""); !good || st.userByID[a.From] == nil {
+			return bad("authorizations[%d].from_user_id unknown", i)
+		}
+		if a.To, good = str(o, "to_user_id", true, ""); !good || st.userByID[a.To] == nil {
+			return bad("authorizations[%d].to_user_id unknown", i)
+		}
+		if a.Amount, good = amount(o); !good {
+			return bad("authorizations[%d].amount", i)
+		}
+		if v, present := o["captured_amount"]; present && v != nil {
+			c, good := integral(v)
+			if !good || c < 0 || c > a.Amount {
+				return bad("authorizations[%d].captured_amount", i)
+			}
+			a.Captured = c
+		}
+		if a.Note, good = str(o, "note", false, ""); !good {
+			return bad("authorizations[%d].note", i)
+		}
+		if a.Visibility, good = visibility(o); !good {
+			return bad("authorizations[%d].visibility", i)
+		}
+		a.Status, good = str(o, "status", false, "open")
+		if !good || (a.Status != "open" && a.Status != "captured" && a.Status != "voided" && a.Status != "expired") {
+			return bad("authorizations[%d].status", i)
+		}
+		if a.ExpiresAt, good = str(o, "expires_at", true, ""); !good || stampNanos(a.ExpiresAt) == 0 {
+			return bad("authorizations[%d].expires_at must be an RFC 3339 time", i)
+		}
+		if pid, good := optID(o, "payment_id"); !good {
+			return bad("authorizations[%d].payment_id", i)
+		} else if pid != nil {
+			a.PaymentIDs = []string{*pid}
+		}
+		if v, present := o["payment_ids"]; present && v != nil {
+			arr, good := v.([]any)
+			if !good {
+				return bad("authorizations[%d].payment_ids", i)
+			}
+			a.PaymentIDs = []string{}
+			for _, x := range arr {
+				id, good := x.(string)
+				if !good {
+					return bad("authorizations[%d].payment_ids", i)
+				}
+				a.PaymentIDs = append(a.PaymentIDs, id)
+			}
+		}
+		if a.CreatedAt, good = stamp(o); !good {
+			return bad("authorizations[%d].created_at", i)
+		}
+		a.Seq = st.seq()
+		a.at, a.exp = stampNanos(a.CreatedAt), stampNanos(a.ExpiresAt)
+		if a.Status == "open" && a.exp <= resetAt {
+			a.Status = "expired" // already past its deadline: holds nothing
+		}
+		st.Authorizations = append(st.Authorizations, a)
+		st.authByID[a.ID] = a
+		if a.Status == "open" {
+			st.open[a] = true
+			st.held[a.From] += a.Amount - a.Captured
+		}
+	}
+	for _, u := range st.Users {
+		if st.held[u.ID] > u.Balance {
+			return bad("open holds of %s exceed their balance", u.ID)
+		}
 	}
 
 	rawOps, ok := list("settlement_operator_ids", false)

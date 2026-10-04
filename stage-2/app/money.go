@@ -22,6 +22,7 @@ type paymentView struct {
 	Visibility   string  `json:"visibility"`
 	RequestID    *string `json:"request_id"`
 	SettlementID *string `json:"settlement_id"`
+	AuthID       *string `json:"authorization_id"`
 	CreatedAt    string  `json:"created_at"`
 }
 
@@ -48,7 +49,7 @@ func (s *State) handleOf(uid string) string {
 
 func (s *State) paymentView(p *Payment) paymentView {
 	return paymentView{p.ID, p.From, s.handleOf(p.From), p.To, s.handleOf(p.To), p.Amount,
-		s.Currency, p.Note, p.Visibility, p.RequestID, p.SettlementID, p.CreatedAt}
+		s.Currency, p.Note, p.Visibility, p.RequestID, p.SettlementID, p.AuthID, p.CreatedAt}
 }
 
 func (s *State) requestView(r *Request) requestView {
@@ -151,7 +152,7 @@ func (s *Server) idempotent(do writeFunc) handler { return s.idempotentGuarded(n
 func (s *Server) idempotentGuarded(guard func(st *State, uid string) *apiErr, do writeFunc) handler {
 	return s.authed(func(r *http.Request, uid string, params []string) (int, any, *apiErr) {
 		if guard != nil {
-			s.mu.Lock()
+			s.lock()
 			e := guard(s.st, uid)
 			s.mu.Unlock()
 			if e != nil {
@@ -176,7 +177,7 @@ func (s *Server) idempotentGuarded(guard func(st *State, uid string) *apiErr, do
 		body := canonical(m)
 		k := idemKey(uid, r.Method, r.URL.Path, key)
 
-		s.mu.Lock()
+		s.lock()
 		defer s.mu.Unlock()
 		st := s.st
 		if st.userByID[uid] == nil {
@@ -238,8 +239,8 @@ func (s *Server) postPayment(st *State, uid string, m map[string]any, _ []string
 	if to == nil {
 		return 0, nil, notFound("no user has that handle")
 	}
-	if me.Balance < amount {
-		return 0, nil, errf(409, "insufficient_funds", "balance is below amount")
+	if st.available(me) < amount {
+		return 0, nil, errf(409, "insufficient_funds", "available balance is below amount")
 	}
 	if to.Balance > maxBalance-amount {
 		return 0, nil, invalid("receiver balance would exceed 2^53")
@@ -301,8 +302,8 @@ func (s *Server) payRequest(st *State, uid string, m map[string]any, params []st
 		return 0, nil, errf(409, "request_not_pending", "request is "+rq.Status)
 	}
 	payer, requester := st.userByID[rq.Payer], st.userByID[rq.Requester]
-	if payer.Balance < rq.Amount {
-		return 0, nil, errf(409, "insufficient_funds", "balance is below amount")
+	if st.available(payer) < rq.Amount {
+		return 0, nil, errf(409, "insufficient_funds", "available balance is below amount")
 	}
 	if requester.Balance > maxBalance-rq.Amount {
 		return 0, nil, invalid("receiver balance would exceed 2^53")
@@ -326,7 +327,7 @@ func (s *Server) cancelRequest(r *http.Request, uid string, params []string) (in
 }
 
 func (s *Server) settleRequest(uid, id string, decline bool) (int, any, *apiErr) {
-	s.mu.Lock()
+	s.lock()
 	defer s.mu.Unlock()
 	st := s.st
 	rq := st.requestByID[id]
@@ -374,7 +375,7 @@ func (s *Server) listRequests(r *http.Request, uid string, _ []string) (int, any
 	if e != nil {
 		return 0, nil, e
 	}
-	s.mu.Lock()
+	s.lock()
 	defer s.mu.Unlock()
 	st := s.st
 	var mine []*Request
@@ -404,7 +405,7 @@ func (s *Server) activity(r *http.Request, uid string, _ []string) (int, any, *a
 	if e != nil {
 		return 0, nil, e
 	}
-	s.mu.Lock()
+	s.lock()
 	defer s.mu.Unlock()
 	st := s.st
 	var feed []*Payment

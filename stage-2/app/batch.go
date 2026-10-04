@@ -145,7 +145,7 @@ func (s *Server) postSettlement(st *State, uid string, m map[string]any, _ []str
 		net[t.to] += t.amount
 	}
 	for u, d := range net {
-		if u.Balance+d < 0 {
+		if u.Balance+d < st.held[u.ID] { // net debits may only use available funds
 			return 0, nil, errf(409, "insufficient_funds", "the batch leaves a wallet below zero")
 		}
 		if u.Balance+d > maxBalance {
@@ -175,7 +175,7 @@ func (s *Server) postSettlement(st *State, uid string, m map[string]any, _ []str
 // ---- export / import (§10) ---------------------------------------------------------
 
 func (s *Server) export(r *http.Request, _ []string) (int, any, *apiErr) {
-	s.mu.Lock()
+	s.lock()
 	state := marshal(s.st) // serialized under the lock: an atomic, read-only snapshot
 	s.mu.Unlock()
 	return 200, map[string]any{"track": "pocketful", "format_version": 1, "state": rawJSON(state)}, nil

@@ -58,6 +58,10 @@ func (s *Server) routes() []route {
 		{"POST", []string{"splits"}, s.idempotent(s.postSplit)},
 		{"POST", []string{"settlements"}, s.idempotentGuarded(operatorOnly, s.postSettlement)},
 		{"GET", []string{"_test", "export"}, s.export},
+		{"POST", []string{"authorizations"}, s.idempotent(s.postAuthorization)},
+		{"GET", []string{"authorizations"}, s.authed(s.listAuthorizations)},
+		{"POST", []string{"authorizations", "*", "capture"}, s.idempotent(s.captureAuthorization)},
+		{"POST", []string{"authorizations", "*", "void"}, s.authed(s.voidAuthorization)},
 		{"POST", []string{"_test", "import"}, s.importState},
 	}
 }
@@ -138,7 +142,7 @@ func (s *Server) caller(r *http.Request) (string, bool) {
 	if tok == "" {
 		return "", false
 	}
-	s.mu.Lock()
+	s.lock()
 	defer s.mu.Unlock()
 	uid, ok := s.st.Tokens[tok]
 	if ok && s.st.userByID[uid] == nil {
@@ -202,7 +206,7 @@ func (s *Server) reset(r *http.Request, _ []string) (int, any, *apiErr) {
 	close(work)
 	wg.Wait()
 
-	s.mu.Lock()
+	s.lock()
 	s.st = st
 	s.mu.Unlock()
 	return 204, nil, nil
@@ -243,7 +247,7 @@ func (s *Server) signup(r *http.Request, _ []string) (int, any, *apiErr) {
 	handle := deriveHandle(email)
 	hash := hashPassword(pw)
 
-	s.mu.Lock()
+	s.lock()
 	defer s.mu.Unlock()
 	st := s.st
 	if st.userByEmail[strings.ToLower(email)] != nil {
@@ -285,7 +289,7 @@ func (s *Server) login(r *http.Request, _ []string) (int, any, *apiErr) {
 		return 0, nil, e
 	}
 
-	s.mu.Lock()
+	s.lock()
 	u := s.st.userByEmail[strings.ToLower(email)]
 	var hash string
 	if u != nil {
@@ -296,7 +300,7 @@ func (s *Server) login(r *http.Request, _ []string) (int, any, *apiErr) {
 		return 0, nil, unauthed()
 	}
 
-	s.mu.Lock()
+	s.lock()
 	defer s.mu.Unlock()
 	if s.st.userByID[u.ID] != u { // state was reset or replaced while verifying
 		return 0, nil, unauthed()
@@ -307,12 +311,13 @@ func (s *Server) login(r *http.Request, _ []string) (int, any, *apiErr) {
 }
 
 func (s *Server) me(r *http.Request, uid string, _ []string) (int, any, *apiErr) {
-	s.mu.Lock()
+	s.lock()
 	defer s.mu.Unlock()
 	u := s.st.userByID[uid]
 	if u == nil { // a reset landed between token check and here
 		return 0, nil, unauthed()
 	}
 	return 200, map[string]any{"user_id": u.ID, "display_name": u.DisplayName, "handle": u.Handle,
-		"balance": u.Balance, "currency": s.st.Currency, "minor_units": s.st.MinorUnits}, nil
+		"balance": u.Balance, "total": u.Balance, "available": s.st.available(u), "held": s.st.held[u.ID],
+		"currency": s.st.Currency, "minor_units": s.st.MinorUnits}, nil
 }
