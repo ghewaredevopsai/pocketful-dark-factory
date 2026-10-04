@@ -146,9 +146,11 @@ func (s *Server) postAuthorization(st *State, uid string, m map[string]any, _ []
 	if st.available(me) < amount {
 		return 0, nil, errf(409, "insufficient_funds", "available balance is below amount")
 	}
-	t := time.Now().UTC().Truncate(time.Second)
-	created := t.Format(stampLayout)
-	expires := t.Add(time.Duration(st.TTL) * time.Second).Format(stampLayout)
+	// created_at comes from the same monotonic µs event clock as payments, captures and
+	// voids, so a hold never starts before an earlier write; expires_at = created_at + ttl
+	// exactly (same fractional part)
+	created, cNs := st.stamp()
+	expires := time.Unix(0, cNs).Add(time.Duration(st.TTL) * time.Second).UTC().Format(microLayout)
 	a := &Authorization{ID: st.newID("a_"), From: me.ID, To: to.ID, Amount: amount, Note: note,
 		Visibility: vis, Status: "open", ExpiresAt: expires, PaymentIDs: []string{}, CreatedAt: created,
 		Seq: st.seq(), at: stampNanos(created), exp: stampNanos(expires)}

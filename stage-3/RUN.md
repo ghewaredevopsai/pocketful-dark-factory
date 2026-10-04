@@ -30,9 +30,12 @@ available) → 409 `historical_overdraft` (total or available negative at any pa
 either party, all movements at one instant combined). A refusal changes nothing and claims no key.
 
 Time precision: payments, revisions (`recorded_at`) and hold events (captures, voids) use
-microseconds (`2026-10-04T04:43:43.123456+00:00`) from a monotonic clock, so `recorded_at` strictly
-increases per payment. Authorization `created_at`/`expires_at`, requests and splits keep whole
-seconds; the reset time used for seeded payments and holds without `created_at` is whole seconds.
+microseconds (`2026-10-04T04:43:43.123456+00:00`) from ONE monotonic clock, so `recorded_at`
+strictly increases per payment and every money event (payment, settlement, authorization creation,
+capture, void, correction) is ordered after every earlier one. Authorization `expires_at` =
+`created_at` + ttl exactly. Requests and splits (not money events) keep whole seconds; the reset
+time used for seeded payments and holds without `created_at` is the reset instant truncated to
+whole seconds, before every later API event.
 
 The browser UI is one HTML shell, one stylesheet and one script embedded in the binary
 (`app/ui/`), rendered client-side from the JSON API. It uses the system font stack and makes no

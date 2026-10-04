@@ -260,6 +260,9 @@ func correctionsRun(t *testing.T, seed int64, outcomes map[string]int) {
 				t.Fatalf("step %d %s T=%s K=%s: got %s want total %d held %d", step, n, fmtNs(T), fmtNs(K), r.raw, wt, wh)
 			}
 			sum += wt
+			if wt < 0 || wt-wh < 0 { // seeded history is consistent here, so no view may be negative
+				t.Fatalf("step %d negative view for %s at T=%s K=%s: total %d held %d", step, n, fmtNs(T), fmtNs(K), wt, wh)
+			}
 			cur := wantStatus(t, do(t, srv, "GET", "/me", tok[u], ""), 200)
 			if num(cur.body["total"]) != l.total(u, math.MaxInt64, math.MaxInt64) {
 				t.Fatalf("step %d %s current total %s", step, n, cur.raw)

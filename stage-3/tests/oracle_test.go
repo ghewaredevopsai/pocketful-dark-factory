@@ -185,6 +185,7 @@ func oracleRun(t *testing.T, seed int64) {
 	f := fmt.Sprintf(`{"currency":"EUR","minor_units":2,"authorization_ttl_seconds":1,"settlement_operator_ids":["u_dee"],"users":[%s],"payments":[%s]}`,
 		joinStr(users), joinStr(seedJSON))
 	resetStart := time.Now().UnixNano()
+	resetNs := resetStart
 	wantStatus(t, do(t, srv, "POST", "/_test/reset", "", f), 204)
 	tok := map[string]string{}
 	for _, n := range names {
@@ -203,7 +204,17 @@ func oracleRun(t *testing.T, seed int64) {
 	for _, p := range m.payments {
 		instants = append(instants, p.at)
 	}
+	var lastEvent int64
+	event := func(ns int64, what string) {
+		if ns <= lastEvent {
+			t.Fatalf("event clock went backwards at %s: %s after %s", what, fmtNs(ns), fmtNs(lastEvent))
+		}
+		lastEvent = ns
+	}
 	addPay := func(body map[string]any) {
+		if body["settlement_id"] == nil { // settlement members share committed_at (checked once)
+			event(parseNs(body["created_at"].(string)), "payment")
+		}
 		p := refPayment{id: body["payment_id"].(string), from: body["from_user_id"].(string), to: body["to_user_id"].(string),
 			amount: num(body["amount"]), at: parseNs(body["created_at"].(string))}
 		m.payments = append(m.payments, p)
@@ -221,7 +232,7 @@ func oracleRun(t *testing.T, seed int64) {
 		u := "u_" + names[rng.Intn(4)]
 		other := "u_" + names[rng.Intn(4)]
 		handle := other[2:]
-		switch rng.Intn(7) {
+		switch rng.Intn(8) {
 		case 0, 1:
 			if u == other {
 				continue
@@ -238,6 +249,7 @@ func oracleRun(t *testing.T, seed int64) {
 			r := post(t, srv, "/settlements", tok["u_dee"], newKey(), fmt.Sprintf(`{"transfers":[{"from_handle":%q,"to_handle":%q,"amount":%d},{"from_handle":%q,"to_handle":%q,"amount":%d}]}`,
 				u[2:], handle, 1+rng.Intn(500), a[2:], b[2:], 1+rng.Intn(500)))
 			if r.status == 201 {
+				event(parseNs(r.body["committed_at"].(string)), "settlement")
 				for _, p := range r.body["payments"].([]any) {
 					addPay(p.(map[string]any))
 				}
@@ -250,6 +262,7 @@ func oracleRun(t *testing.T, seed int64) {
 			if r.status == 201 {
 				h := &refHold{id: r.body["authorization_id"].(string), from: u, amount: num(r.body["amount"]),
 					created: parseNs(r.body["created_at"].(string)), expires: parseNs(r.body["expires_at"].(string))}
+				event(h.created, "authorization")
 				holdByID[h.id] = h
 				m.holds = append(m.holds, h)
 				openHolds = append(openHolds, h)
@@ -265,6 +278,7 @@ func oracleRun(t *testing.T, seed int64) {
 			final := rng.Intn(2) == 0
 			r := post(t, srv, "/authorizations/"+h.id+"/capture", tok[holdTo[h.id]], newKey(), fmt.Sprintf(`{"amount":%d,"final":%v}`, 1+rng.Intn(300), final))
 			if r.status == 201 {
+				event(parseNs(r.body["created_at"].(string)), "capture")
 				c := refPayment{id: r.body["payment_id"].(string), from: r.body["from_user_id"].(string), to: r.body["to_user_id"].(string),
 					amount: num(r.body["amount"]), at: parseNs(r.body["created_at"].(string))}
 				m.payments = append(m.payments, c)
@@ -286,7 +300,33 @@ func oracleRun(t *testing.T, seed int64) {
 			r := post(t, srv, "/authorizations/"+h.id+"/void", tok[h.from], "", "")
 			if r.status == 200 && h.closedAt == 0 {
 				h.closedAt = parseNs(r.body["closed_at"].(string))
+				event(h.closedAt, "void")
 				instants = append(instants, h.closedAt)
+			}
+		case 7:
+			if u == other {
+				continue
+			}
+			amt := 1 + rng.Intn(2000)
+			r := post(t, srv, "/payments", tok[other], newKey(), fmt.Sprintf(`{"to_handle":%q,"amount":%d}`, u[2:], amt))
+			if r.status != 201 {
+				continue
+			}
+			addPay(r.body)
+			// hold everything available, so the hold depends on the money that just arrived
+			av := num(wantStatus(t, do(t, srv, "GET", "/me", tok[u], ""), 200).body["available"])
+			if av < 1 || av > 1000000000 {
+				continue
+			}
+			r = post(t, srv, "/authorizations", tok[u], newKey(), fmt.Sprintf(`{"to_handle":%q,"amount":%d}`, other[2:], av))
+			if r.status == 201 {
+				h := &refHold{id: r.body["authorization_id"].(string), from: u, amount: num(r.body["amount"]),
+					created: parseNs(r.body["created_at"].(string)), expires: parseNs(r.body["expires_at"].(string))}
+				event(h.created, "authorization after funding")
+				m.holds = append(m.holds, h)
+				openHolds = append(openHolds, h)
+				instants = append(instants, h.created, h.expires)
+				holdTo[h.id] = other
 			}
 		case 6:
 			r := wantStatus(t, do(t, srv, "GET", "/statement?limit=3", tok[u], ""), 200)
@@ -329,6 +369,9 @@ func oracleRun(t *testing.T, seed int64) {
 			}
 			sum += wt
 			checks++
+			if T >= resetNs && (wt < 0 || wt-wh < 0) {
+				t.Fatalf("negative view for %s at T=%s K=%s: total %d held %d", n, fmtNs(T), fmtNs(K), wt, wh)
+			}
 		}
 		if sum != seededTotal {
 			t.Fatalf("sum %d != seeded %d at T=%s K=%s", sum, seededTotal, fmtNs(T), fmtNs(K))

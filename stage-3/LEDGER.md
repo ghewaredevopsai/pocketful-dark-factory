@@ -341,7 +341,7 @@ revisions (each with `effective_at` and `recorded_at`) and authorization lifecyc
 | 329 | S2-EXP-05 | Seeded `expires_at` may be in the past (expired at reset) or the future; API-created ones may be short-lived | done |
 | 330 | S2-AC-01 | `POST /authorizations` requires `Idempotency-Key`; the caller is the payer | done |
 | 331 | S2-AC-02 | Body `to_handle`, `amount`, optional `note` (default "") and `visibility` (default "public") | done |
-| 332 | S2-AC-03 | 201 body: authorization_id, from_user_id, from_handle, to_user_id, to_handle, amount, captured_amount 0, currency, note, visibility, status `open`, expires_at, payment_id null, created_at, remaining_amount, payment_ids [] | done |
+| 332 | S2-AC-03 | (stage 3: created_at and expires_at carry µs from the event clock; expires_at − created_at = ttl exactly) 201 body: authorization_id, from_user_id, from_handle, to_user_id, to_handle, amount, captured_amount 0, currency, note, visibility, status `open`, expires_at, payment_id null, created_at, remaining_amount, payment_ids [] | done |
 | 333 | S2-AC-04 | `expires_at` = `created_at` + `authorization_ttl_seconds` | done |
 | 334 | S2-AC-05 | Caller's `available` below `amount` → 409 `insufficient_funds` | done |
 | 335 | S2-AC-06 | `amount` below 1, above 1000000000 or not an integer → 422 `validation_failed` | done |
@@ -486,7 +486,7 @@ revisions (each with `effective_at` and `recorded_at`) and authorization lifecyc
 | 474 | S3-SE-03 | A stage-3 service accepts exports from our stage-1 and stage-2 services | done |
 | 475 | S3-SE-04 | Imported ledgers account for authorizations and captures | done |
 | 476 | S3-HH-01 | `GET /me?as_of=T&known_at=K`: all four money fields describe that same view; `balance = total`, `available = total − held` | done |
-| 477 | S3-HH-02 | A hold starts at authorization creation | done |
+| 477 | S3-HH-02 | A hold starts at authorization creation (creation is stamped on the same monotonic µs event clock as payments, so it never precedes an earlier write) | done |
 | 478 | S3-HH-03 | A nonfinal capture reduces the hold at capture time | done |
 | 479 | S3-HH-04 | A final capture, void or expiry releases the remainder at that event's time | done |
 | 480 | S3-HH-05 | Expiry takes effect at `expires_at` | done |

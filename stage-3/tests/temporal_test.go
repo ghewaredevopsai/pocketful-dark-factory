@@ -645,3 +645,75 @@ func TestTenThousandPaymentsPerformance(t *testing.T) {
 	wantStatus(t, post(t, srv, "/payments", ada, newKey(), `{"to_handle":"bob","amount":1}`), 201)
 	t.Logf("%-40s %v", "POST /payments", time.Since(start))
 }
+
+// Reviewer finding 1 (regression): a hold's creation instant comes from the same µs event
+// clock as payments, so funding then authorizing within one second never dates the hold
+// before the payment that funded it, and no historical view goes negative.
+func TestHoldsAreOrderedOnTheEventClock(t *testing.T) {
+	srv, tk := worldWith(t, []string{"ada:0", "bob:1000000"}, "", `,"authorization_ttl_seconds":600`)
+	w := world{srv: srv, ada: tk["ada"], bob: tk["bob"]}
+	at := func(asOf string) wallet {
+		r := wantStatus(t, do(t, srv, "GET", "/me"+qs("as_of", asOf), tk["ada"], ""), 200)
+		return wallet{num(r.body["total"]), num(r.body["available"]), num(r.body["held"]), num(r.body["balance"])}
+	}
+	tm := func(s string) time.Time { x, _ := time.Parse(time.RFC3339Nano, s); return x }
+	just := func(s string, d time.Duration) string { return tm(s).Add(d).UTC().Format(time.RFC3339Nano) }
+	var lastPay *resp
+	var prev time.Time
+	var held int64
+	for i := 0; i < 25; i++ { // no sleeps: most pairs share one wall-clock second
+		p := wantStatus(t, post(t, srv, "/payments", tk["bob"], newKey(), `{"to_handle":"ada","amount":100}`), 201)
+		a := wantStatus(t, post(t, srv, "/authorizations", tk["ada"], newKey(), `{"to_handle":"bob","amount":100}`), 201)
+		pc, ac := tm(p.body["created_at"].(string)), tm(a.body["created_at"].(string))
+		if !pc.After(prev) || !ac.After(pc) {
+			t.Fatalf("event clock not strictly increasing: prev %v payment %v hold %v", prev, pc, ac)
+		}
+		prev = ac
+		// expires_at = created_at + ttl exactly, same fractional part
+		if tm(a.body["expires_at"].(string)).Sub(ac) != 600*time.Second || !stampRE.MatchString(a.body["created_at"].(string)) {
+			t.Fatal(a.raw)
+		}
+		// just before the hold: the new money is there, the hold is not
+		if g := at(just(a.body["created_at"].(string), -time.Microsecond)); g.held != held || g.available < 0 || g.total != int64(100*(i+1)) {
+			t.Fatalf("pair %d before the hold: %+v", i, g)
+		}
+		held += 100
+		if g := at(a.body["created_at"].(string)); g.held != held || g.available != 0 {
+			t.Fatalf("pair %d at the hold: %+v", i, g)
+		}
+		if g := at(p.body["created_at"].(string)); g.available < 0 {
+			t.Fatalf("pair %d at the payment: %+v", i, g)
+		}
+		lastPay = &p
+	}
+	// step 5 of the repro: a correction that only credits ada is accepted
+	id := lastPay.body["payment_id"].(string)
+	wantStatus(t, correct(t, srv, tk["bob"], id, newKey(), corr(1, 600, lastPay.body["created_at"].(string), "underpaid")), 201)
+	// second symptom: a hold created right after a nonfinal capture is not counted before it
+	wantStatus(t, post(t, srv, "/payments", tk["bob"], newKey(), `{"to_handle":"ada","amount":1000}`), 201)
+	a1 := authID(t, authorize(t, w, tk["ada"], "bob", 500))
+	c := wantStatus(t, post(t, srv, "/authorizations/"+a1+"/capture", tk["bob"], newKey(), `{"amount":200,"final":false}`), 201)
+	a2 := wantStatus(t, post(t, srv, "/authorizations", tk["ada"], newKey(), `{"to_handle":"bob","amount":50}`), 201)
+	capAt := c.body["created_at"].(string)
+	if !tm(a2.body["created_at"].(string)).After(tm(capAt)) {
+		t.Fatal("hold dated before the capture that preceded it")
+	}
+	if g := at(just(capAt, -time.Microsecond)); g.held != held+500 {
+		t.Fatalf("before the capture: %+v (want held %d)", g, held+500)
+	}
+	r := wantStatus(t, do(t, srv, "GET", "/me"+qs("as_of", just(capAt, -time.Microsecond), "known_at", just(capAt, -time.Microsecond)), tk["ada"], ""), 200)
+	if num(r.body["held"]) != held+500 {
+		t.Fatal(r.raw)
+	}
+	if g := at(capAt); g.held != held+300 {
+		t.Fatalf("at the capture: %+v", g)
+	}
+	if g := at(a2.body["created_at"].(string)); g.held != held+350 || g.available < 0 {
+		t.Fatalf("after the second hold: %+v", g)
+	}
+	// newest first, ordered on the event clock
+	l := wantStatus(t, do(t, srv, "GET", "/authorizations?limit=2", tk["ada"], ""), 200).body["authorizations"].([]any)
+	if l[0].(map[string]any)["authorization_id"] != a2.body["authorization_id"] || l[1].(map[string]any)["authorization_id"] != a1 {
+		t.Fatal(l)
+	}
+}
