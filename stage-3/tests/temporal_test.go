@@ -717,3 +717,48 @@ func TestHoldsAreOrderedOnTheEventClock(t *testing.T) {
 		t.Fatal(l)
 	}
 }
+
+// Reviewer finding 2 (regression): seeded items without created_at take the reset instant
+// itself, not the start of its second. The reset is pinned >= 300 ms into a second and a
+// supplied seeded payment sits 100 ms before it, inside the same second.
+func TestSeededDefaultsUseTheResetInstant(t *testing.T) {
+	srv := httptest.NewServer(app.New())
+	t.Cleanup(srv.Close)
+	for time.Now().Nanosecond() < 300_000_000 || time.Now().Nanosecond() > 900_000_000 {
+		time.Sleep(5 * time.Millisecond)
+	}
+	s1At := time.Now().Add(-100 * time.Millisecond).UTC().Format("2006-01-02T15:04:05.000000-07:00")
+	exp := time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339)
+	f := `{"currency":"EUR","minor_units":2,"users":[` + user("ada", 10000) + `,` + user("bob", 1795) + `,` + user("cy", 705) + `],
+	 "payments":[{"id":"s1","from_user_id":"u_bob","to_user_id":"u_cy","amount":700,"created_at":"` + s1At + `"},
+	             {"id":"s2","from_user_id":"u_bob","to_user_id":"u_cy","amount":5}],
+	 "authorizations":[{"id":"ah","from_user_id":"u_cy","to_user_id":"u_ada","amount":700,"status":"open","expires_at":"` + exp + `"}]}`
+	wantStatus(t, do(t, srv, "POST", "/_test/reset", "", f), 204)
+	cy := login(t, srv, "cy@example.com", "correct horse")
+	bob := login(t, srv, "bob@example.com", "correct horse")
+	tm := func(s string) time.Time { x, _ := time.Parse(time.RFC3339Nano, s); return x }
+	hold := wantStatus(t, do(t, srv, "GET", "/authorizations", cy, ""), 200).body["authorizations"].([]any)[0].(map[string]any)
+	if !tm(hold["created_at"].(string)).After(tm(s1At)) {
+		t.Fatalf("seeded hold at %v, before the seeded payment at %s", hold["created_at"], s1At)
+	}
+	s := wantStatus(t, do(t, srv, "GET", "/statement", cy, ""), 200)
+	if got := entryIDs(s); !reflect.DeepEqual(got, []string{"s1", "s2"}) {
+		t.Fatalf("omitted created_at is reset time, after s1: %v", got)
+	}
+	if e := s.body["entries"].([]any)[1].(map[string]any); e["effective_at"] != hold["created_at"] {
+		t.Fatalf("seeded payment and seeded hold share the reset instant: %v vs %v", e["effective_at"], hold["created_at"])
+	}
+	for _, asOf := range []string{s1At, hold["created_at"].(string), time.Now().UTC().Format(time.RFC3339Nano)} {
+		r := wantStatus(t, do(t, srv, "GET", "/me"+qs("as_of", asOf), cy, ""), 200)
+		if num(r.body["available"]) < 0 || num(r.body["total"]) < 0 {
+			t.Fatalf("negative view at %s: %s", asOf, r.raw)
+		}
+	}
+	// a correction that only credits cy is accepted
+	wantStatus(t, correct(t, srv, bob, "s1", newKey(), corr(1, 701, s1At, "credit cy 1")), 201)
+	// later API events still come after the reset instant
+	p := wantStatus(t, post(t, srv, "/payments", bob, newKey(), `{"to_handle":"cy","amount":1}`), 201)
+	if !tm(p.body["created_at"].(string)).After(tm(hold["created_at"].(string))) {
+		t.Fatal("API payment not after the reset instant")
+	}
+}

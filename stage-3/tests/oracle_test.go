@@ -182,8 +182,32 @@ func oracleRun(t *testing.T, seed int64) {
 	for _, n := range names {
 		users = append(users, user(n, end[n]))
 	}
-	f := fmt.Sprintf(`{"currency":"EUR","minor_units":2,"authorization_ttl_seconds":1,"settlement_operator_ids":["u_dee"],"users":[%s],"payments":[%s]}`,
-		joinStr(users), joinStr(seedJSON))
+	// pin the reset >= 300 ms into a second, then seed two payments with fractional
+	// created_at just before it (inside the same second) and an open hold without created_at
+	for time.Now().Nanosecond() < 300_000_000 || time.Now().Nanosecond() > 850_000_000 {
+		time.Sleep(5 * time.Millisecond)
+	}
+	var latestSupplied int64
+	for _, p := range m.payments {
+		if p.at > latestSupplied {
+			latestSupplied = p.at
+		}
+	}
+	for j := 0; j < 2; j++ {
+		at := time.Now().Add(-time.Duration(20+rng.Intn(200)) * time.Millisecond).UTC().Truncate(time.Microsecond)
+		id := fmt.Sprintf("p_frac%d", j)
+		m.opening["u_ada"] += 100
+		m.opening["u_cy"] -= 100
+		m.payments = append(m.payments, refPayment{id: id, from: "u_ada", to: "u_cy", amount: 100, at: at.UnixNano()})
+		seedJSON = append(seedJSON, fmt.Sprintf(`{"id":%q,"from_user_id":"u_ada","to_user_id":"u_cy","amount":100,"created_at":%q}`, id, at.Format("2006-01-02T15:04:05.000000Z07:00")))
+		if at.UnixNano() > latestSupplied {
+			latestSupplied = at.UnixNano()
+		}
+	}
+	seedHold := fmt.Sprintf(`{"id":"a_seed","from_user_id":"u_cy","to_user_id":"u_ada","amount":%d,"status":"open","expires_at":%q}`,
+		end["cy"]/2, time.Now().Add(3*time.Hour).UTC().Format(time.RFC3339))
+	f := fmt.Sprintf(`{"currency":"EUR","minor_units":2,"authorization_ttl_seconds":1,"settlement_operator_ids":["u_dee"],"users":[%s],"payments":[%s],"authorizations":[%s]}`,
+		joinStr(users), joinStr(seedJSON), seedHold)
 	resetStart := time.Now().UnixNano()
 	resetNs := resetStart
 	wantStatus(t, do(t, srv, "POST", "/_test/reset", "", f), 204)
@@ -191,12 +215,19 @@ func oracleRun(t *testing.T, seed int64) {
 	for _, n := range names {
 		tok["u_"+n] = login(t, srv, n+"@example.com", "correct horse")
 	}
+	// the seeded hold starts at the reset instant, at or after every supplied seeded created_at
+	sh := wantStatus(t, do(t, srv, "GET", "/authorizations", tok["u_cy"], ""), 200).body["authorizations"].([]any)[0].(map[string]any)
+	sHold := &refHold{id: "a_seed", from: "u_cy", amount: num(sh["amount"]), created: parseNs(sh["created_at"].(string)), expires: parseNs(sh["expires_at"].(string))}
+	if sHold.created < latestSupplied {
+		t.Fatalf("seeded hold created %s before a supplied seeded created_at %s", fmtNs(sHold.created), fmtNs(latestSupplied))
+	}
+	m.holds = append(m.holds, sHold)
 	// the reset time of omitted seeded payments, read back from the revisions endpoint
 	for _, p := range omitted {
 		r := wantStatus(t, do(t, srv, "GET", "/payments/"+p.id+"/revisions", tok[p.from], ""), 200)
 		p.at = parseNs(r.body["revisions"].([]any)[0].(map[string]any)["effective_at"].(string))
-		if p.at < resetStart-int64(time.Second) { // reset time, whole seconds
-			t.Fatalf("reset time %d before reset began %d", p.at, resetStart)
+		if p.at < resetStart || p.at != sHold.created {
+			t.Fatalf("omitted created_at %s is not the reset instant %s (reset began %s)", fmtNs(p.at), fmtNs(sHold.created), fmtNs(resetStart))
 		}
 		m.payments = append(m.payments, p)
 	}

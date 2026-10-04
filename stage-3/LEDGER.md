@@ -403,7 +403,7 @@ revisions (each with `effective_at` and `recorded_at`) and authorization lifecyc
 | 391 | S3-SC-02 | Users can request historical balances and paginated statements; senders can correct eligible payments while the original receipt is preserved; historical queries support both effective date and information known at a given time | done |
 | 392 | S3-TS-01 | Every payment's `created_at` is an RFC 3339 instant with an offset identifying when it moved money; every endpoint returning a payment includes it | done |
 | 393 | S3-TS-02 | `GET /activity` keeps its ordering by `created_at` and shows the original payment (corrections are not feed payments) | done |
-| 394 | S3-TS-03 | Seeded payments may supply `created_at`; omitted → reset time, which is before every later API-created payment | done |
+| 394 | S3-TS-03 | Seeded payments may supply `created_at`; omitted → reset time, which is before every later API-created payment (the reset instant itself in µs, at or after every supplied seeded `created_at`) | done |
 | 395 | S3-TS-04 | A seeded `created_at` in the future → 422 `validation_failed` from reset, state unchanged | done |
 | 396 | S3-TS-05 | Fixture `balance` stays the balance after all seeded payments; loading seeded payments never changes it | done |
 | 397 | S3-AS-01 | `GET /me?as_of=` optional; must be an RFC 3339 instant with an offset | done |
